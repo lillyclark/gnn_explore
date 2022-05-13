@@ -52,7 +52,7 @@ class TestEnv():
         return self.state, reward, done, None
 
     def get_random_action(self):
-        r = np.random.randint(2,size=8)
+        r = np.random.randint(3,size=8)
         return torch.Tensor(r)
 
 class Actor(nn.Module):
@@ -128,7 +128,7 @@ def trainIters(actor, critic, n_iters):
                 print('Iteration: {}, Score: {}'.format(iter, i))
                 break
 
-            if i == 500:
+            if i == 1000:
                 print('attempts exceeded')
                 break
 
