@@ -6,6 +6,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions import Categorical
 from Masks import CategoricalMasked, CategoricalMap
+import matplotlib.pyplot as plt
 
 from typing import Optional
 
@@ -23,7 +24,7 @@ class TestEnv():
 
     def step(self,action):
         # print("STATE",self.state)
-        new_state = np.zeros(self.state.shape)
+        new_state = self.state.copy()
         # print("new_state",new_state)
         for cell in range(len(self.state)):
             if self.state[cell]: # has robot
@@ -40,27 +41,26 @@ class TestEnv():
                     raise ValueError()
                 if not new_state[new_pos]: # collision avoidance
                     # print("moves")
+                    new_state[cell] = 0
                     new_state[new_pos] = 1
-                else:
-                    # print("stays")
-                    new_state[cell] = 1
                 # print("new_state",new_state)
+        assert sum(self.state) == 2
         self.state = new_state
+        reward, done = self.get_reward()
+        return self.state, reward, done, None
+
+    def get_reward(self):
         reward, done = 0, False
         if (self.state == self.goal_state).all():
             reward, done = 10, True
-        return self.state, reward, done, None
-
-    def get_random_action(self):
-        r = np.random.randint(3,size=8)
-        return torch.Tensor(r)
+        return reward, done
 
 class Actor(nn.Module):
     def __init__(self, state_size, action_size):
         super(Actor, self).__init__()
         self.state_size = state_size
         self.num_actions = action_size
-        self.action_size = state_size*action_size
+        self.action_size = self.state_size*self.num_actions
         self.linear1 = nn.Linear(self.state_size, 128)
         self.linear2 = nn.Linear(128, 256)
         self.linear3 = nn.Linear(256, self.action_size)
@@ -72,7 +72,6 @@ class Actor(nn.Module):
         output = output.reshape(self.state_size,self.num_actions)
         distribution = Categorical(F.softmax(output, dim=-1))
         return distribution
-
 
 class Critic(nn.Module):
     def __init__(self, state_size, action_size):
@@ -97,9 +96,10 @@ def compute_returns(next_value, rewards, masks, gamma=0.99):
         returns.insert(0, R)
     return returns
 
-def trainIters(actor, critic, n_iters):
-    optimizerA = optim.Adam(actor.parameters())
-    optimizerC = optim.Adam(critic.parameters())
+def trainIters(actor, critic, n_iters, lr):
+    scores = []
+    optimizerA = optim.Adam(actor.parameters(), lr=lr)
+    optimizerC = optim.Adam(critic.parameters(), lr=lr)
     for iter in range(n_iters):
         state = env.reset()
         log_probs = []
@@ -125,10 +125,11 @@ def trainIters(actor, critic, n_iters):
             state = next_state
 
             if done:
-                print('Iteration: {}, Score: {}'.format(iter, i))
+                print('Iteration: {}, Score: {}'.format(iter, i+1))
+                scores.append(i+1)
                 break
 
-            if i == 1000:
+            if i == 500:
                 print('attempts exceeded')
                 break
 
@@ -151,6 +152,10 @@ def trainIters(actor, critic, n_iters):
         critic_loss.backward()
         optimizerA.step()
         optimizerC.step()
+
+    plt.plot(scores)
+    plt.title("Time until goal state reached over training episodes")
+    plt.show()
 
 def play(actor):
     state = env.reset()
@@ -178,9 +183,9 @@ state_size = env.state.shape[0]
 action_size = env.num_actions
 print("state_size",state_size)
 print("action_size",action_size)
-lr = 0.0001
+lr = 0.001
 
 actor = Actor(state_size, action_size).to(device)
 critic = Critic(state_size, action_size).to(device)
-trainIters(actor, critic, n_iters=100)
+trainIters(actor, critic, n_iters=500, lr=lr)
 play(actor)

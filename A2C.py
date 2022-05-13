@@ -26,6 +26,15 @@ class TestEnv():
     def get_indicent_edges(self):
         incident_edges = {}
         for cell in range(len(self.state)):
+            if self.state[cell]:
+                incident_edges[cell] = torch.zeros(self.num_actions, dtype=torch.bool)
+                for edge_idx in range(len(self.edges)):
+                    if cell in self.edges[edge_idx]:
+                        incident_edges[cell][edge_idx] = 1
+        return incident_edges
+
+        incident_edges = {}
+        for cell in range(len(self.state)):
             if self.state[cell]: # this is a robot
                 incident_edges[cell] = []
                 for edge_idx in range(len(self.edges)):
@@ -34,8 +43,11 @@ class TestEnv():
         return incident_edges
 
     def step(self,action):
-        # print("STATE",self.state)
-        # print("ACTION",action)
+        print("STATE",self.state)
+        print("ACTION",action)
+
+        assert False
+
         new_state = self.state.copy()
         actions_taken = torch.zeros(action.shape,dtype=torch.bool)
 
@@ -117,8 +129,6 @@ def compute_returns(next_value, rewards, masks, gamma=0.99):
     return returns
 
 def trainIters(actor, critic, n_iters):
-    print(actor.parameters())
-    print(critic.parameters())
     optimizerA = optim.Adam(actor.parameters())
     optimizerC = optim.Adam(critic.parameters())
     for iter in range(n_iters):
@@ -132,7 +142,28 @@ def trainIters(actor, critic, n_iters):
             state = torch.FloatTensor(state).to(device)
             dist, value = actor(state), critic(state)
 
-            action = dist.sample()
+            print("log prob example", dist.log_prob(torch.Tensor([0])))
+
+            actions = {}
+            log_prob_sum = torch.Tensor([0])
+            print("log_prob_sum", log_prob_sum)
+            for robot, edges in env.get_indicent_edges().items():
+                print("robot",robot)
+                print("edges",edges)
+                print("dist.probs",dist.probs)
+                probs = dist.probs[edges]
+                # probs = torch.masked_select(dist.probs, edges.unsqueeze(1))
+                print("probs",probs)
+                robot_dist = Categorical(probs)
+                a = robot_dist.sample()
+                robot_log_prob = robot_dist.log_prob(a)
+                print("log_prob (individual)", robot_log_prob)
+                log_prob_sum += robot_log_prob
+                actions[robot] = a
+
+            print("actions",actions)
+            print("log_prob (joint)", log_prob_sum)
+
             next_state, reward, done, log_prob_mask = env.step(action.cpu().numpy())
 
             # sum up the log_probs of the sample where the action was taken
