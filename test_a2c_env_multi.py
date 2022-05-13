@@ -13,7 +13,7 @@ import numpy as np
 
 class TestEnv():
     def __init__(self):
-        self.num_actions = 2 # per grid square
+        self.num_actions = 3 # left, stay, right
         self.state = np.array([1,0,0,0,1,0,0,0])
         self.goal_state = np.array([0,0,0,1,0,0,0,1])
 
@@ -31,9 +31,13 @@ class TestEnv():
                 if action[cell] == 0: # go left
                     # print("goes left")
                     new_pos = max(cell-1,0)
-                else: # go right
+                elif action[cell] == 1: # stay
+                    new_pos = cell
+                elif action[cell] == 2: # go right
                     # print("goes right")
                     new_pos = min(cell+1,len(self.state)-1)
+                else:
+                    raise ValueError()
                 if not new_state[new_pos]: # collision avoidance
                     # print("moves")
                     new_state[new_pos] = 1
