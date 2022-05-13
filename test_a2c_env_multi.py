@@ -6,17 +6,50 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
+from typing import Optional
+
 import numpy as np
+
+class CategoricalMasked(Categorical):
+
+    def __init__(self, logits: torch.Tensor, mask: Optional[torch.Tensor] = None):
+        self.mask = mask
+        # self.batch, self.nb_action = logits.size()
+        if mask is None:
+            super(CategoricalMasked, self).__init__(logits=logits)
+        else:
+            self.mask_value = torch.finfo(logits.dtype).min
+            logits.masked_fill_(~self.mask, self.mask_value)
+            super(CategoricalMasked, self).__init__(logits=logits)
+
+    # def entropy(self):
+    #     if self.mask is None:
+    #         return super().entropy()
+    #     # Elementwise multiplication
+    #     p_log_p = einsum("ij,ij->ij", self.logits, self.probs)
+    #     # Compute the entropy with possible action only
+    #     p_log_p = torch.where(
+    #         self.mask,
+    #         p_log_p,
+    #         torch.tensor(0, dtype=p_log_p.dtype, device=p_log_p.device),
+    #     )
+    #     return -reduce(p_log_p, "b a -> b", "sum", b=self.batch, a=self.nb_action)
 
 class TestEnv():
     def __init__(self):
-        self.num_actions = 2
+        self.num_actions = 7
         self.state = np.array([1,0,0,0,1,0,0,0])
         self.goal_state = np.array([0,0,0,1,0,0,0,1])
 
     def reset(self):
         self.state = np.array([1,0,0,0,1,0,0,0])
         return self.state
+
+    def dist_to_action(self, dist):
+        mask = torch.zeros(7, dtype=torch.bool)
+        mask[0], mask[1] = True, True
+        constrained_dist = CategoricalMasked(dist.logits, mask)
+        return constrained_dist.sample_n(2)
 
     def step1(self,action1):
         new_state = np.zeros(4)
@@ -106,20 +139,16 @@ def trainIters(actor, critic, n_iters):
         values = []
         rewards = []
         masks = []
-        entropy = 0
 
         for i in count():
             # env.render()
             state = torch.FloatTensor(state).to(device)
             dist, value = actor(state), critic(state)
 
-            action = dist.sample_n(2)
-            # print("dist",dist)
-            # print("action",action)
+            action = env.dist_to_action(dist)
             next_state, reward, done, _ = env.step(action.cpu().numpy())
 
             log_prob = dist.log_prob(action).unsqueeze(0)
-            entropy += dist.entropy().mean()
 
             log_probs.append(log_prob)
             values.append(value)
@@ -163,7 +192,7 @@ def play(actor):
         state = torch.FloatTensor(state).to(device)
         dist, value = actor(state), critic(state)
 
-        action = dist.sample_n(2)
+        action = env.dist_to_action(dist)
         print("action:",action)
         next_state, reward, done, _ = env.step(action.cpu().numpy())
 
