@@ -1,4 +1,5 @@
-# from torch_geometric.nn import GCNConv, TopKPooling, GatedGraphConv, global_max_pool, global_mean_pool
+from torch_geometric.nn import GCNConv
+# , TopKPooling, GatedGraphConv, global_max_pool, global_mean_pool
 # from torch_geometric.utils import (add_self_loops, sort_edge_index,
                                    # remove_self_loops, softmax)
 # from torch_geometric.utils.repeat import repeat
@@ -34,6 +35,43 @@ class GCN(torch.nn.Module):
         x = self.fully_con1(x)
         return (x[edge_index[0]] * x[edge_index[1]]).sum(dim=-1)
         # return x
+
+class GCNActor(torch.nn.Module):
+    def __init__(self, num_node_features, num_actions):
+        super(GCNActor, self).__init__()
+        self.input_size = num_node_features
+        self.output_size = num_actions
+        self.conv1 = GCNConv(self.input_size, 128, improved=True)
+        self.conv2 = GCNConv(128, 256, improved=True)
+        self.fully_con1 = torch.nn.Linear(256, self.output_size)
+
+    def forward(self, data, prob=0.0, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+        x = self.conv1(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = self.conv2(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = F.dropout(x, p=prob)
+        x = self.fully_con1(x)
+        return Categorical(F.softmax(x, dim=-1))
+
+class GCNCritic(torch.nn.Module):
+    def __init__(self, num_node_features):
+        super(GCNCritic, self).__init__()
+        self.input_size = num_node_features
+        self.conv1 = GCNConv(self.input_size, 128, improved=True)
+        self.conv2 = GCNConv(128, 256, improved=True)
+        self.fully_con1 = torch.nn.Linear(256, 1)
+
+    def forward(self, data, prob=0.0, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+        x = self.conv1(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = self.conv2(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = F.dropout(x, p=prob)
+        x = self.fully_con1(x)
+        return x
 
 class Actor(nn.Module):
     def __init__(self, state_size, action_size):
