@@ -1,4 +1,4 @@
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, GatedGraphConv
 # , TopKPooling, GatedGraphConv, global_max_pool, global_mean_pool
 # from torch_geometric.utils import (add_self_loops, sort_edge_index,
                                    # remove_self_loops, softmax)
@@ -71,6 +71,57 @@ class GCNCritic(torch.nn.Module):
         x = F.relu(x)
         x = F.dropout(x, p=prob)
         x = self.fully_con1(x)
+        return x
+
+class GGNN(torch.nn.Module):
+    def __init__(self):
+        super(GGNN, self).__init__()
+        self.gconv1 = GatedGraphConv(1000, 3)
+        self.fully_con1 = torch.nn.Linear(1000, 1)
+
+    def forward(self, data, prob, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+
+        x = self.gconv1(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = F.dropout(x, p=prob)
+        x = self.fully_con1(x)
+        return x
+
+
+class GGNNActor(torch.nn.Module):
+    def __init__(self, num_node_features, num_actions):
+        super(GGNNActor, self).__init__()
+        self.input_size = num_node_features
+        self.output_size = num_actions
+        self.gconv1 = GatedGraphConv(256, 3)
+        self.fully_con1 = torch.nn.Linear(256, self.output_size)
+
+    def forward(self, data, prob=0.0, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+
+        x = self.gconv1(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = F.dropout(x, p=prob)
+        x = self.fully_con1(x)
+        return Categorical(F.softmax(x, dim=-1))
+
+
+class GGNNCritic(torch.nn.Module):
+    def __init__(self, num_node_features):
+        super(GGNNCritic, self).__init__()
+        self.input_size = num_node_features
+        self.gconv1 = GatedGraphConv(256, 3)
+        self.fully_con1 = torch.nn.Linear(256, 1) #100)
+
+    def forward(self, data, prob=0.0, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+
+        x = self.gconv1(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = F.dropout(x, p=prob)
+        x = self.fully_con1(x)
+        # x = global_mean_pool(x, batch).mean(dim=1)
         return x
 
 class Actor(nn.Module):

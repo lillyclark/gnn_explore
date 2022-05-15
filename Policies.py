@@ -6,7 +6,7 @@ import torch.optim as optim
 from itertools import count
 import matplotlib.pyplot as plt
 
-class GCN_A2C():
+class Graph_A2C():
     def __init__(self, device, n_iters, lr, gamma):
         self.device = device
         self.gamma = gamma
