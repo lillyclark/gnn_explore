@@ -4,20 +4,19 @@ from torch_geometric.data import Data
 
 class GraphEnv():
     def __init__(self):
-        self.IS_ROBOT = 0
-        self.IS_ROBOT_GOAL = 1
-        self.num_node_features = 2 # is_robot, is_goal
+        self.IS_BASE = 0
+        self.IS_ROBOT = 1
+        self.IS_KNOWN_BASE = 2
+        self.IS_KNOWN_ROBOT = 3
+
+        self.num_node_features = 4 # is_robot, is_goal
 
         self.num_actions = 3 # each node has max 2 edges
         self.num_nodes = 8
 
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
-        self.feature_matrix[0][self.IS_ROBOT], self.feature_matrix[4][self.IS_ROBOT] = True, True
-        self.feature_matrix[3][self.IS_ROBOT_GOAL], self.feature_matrix[7][self.IS_ROBOT_GOAL] = True, True
-
-        self.goal_feature_matrix = torch.zeros(self.feature_matrix.shape)
-        self.goal_feature_matrix[3][self.IS_ROBOT], self.goal_feature_matrix[7][self.IS_ROBOT] = True, True
-        self.goal_feature_matrix[3][self.IS_ROBOT_GOAL], self.goal_feature_matrix[7][self.IS_ROBOT_GOAL] = True, True
+        self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE], self.feature_matrix[0][self.IS_KNOWN_ROBOT] = True, True, True
+        self.feature_matrix[1][self.IS_ROBOT], self.feature_matrix[1][self.IS_KNOWN_ROBOT], self.feature_matrix[1][self.IS_KNOWN_BASE] = True, True, True
 
         self.edge_index = torch.Tensor([list(range(0,self.num_nodes-1)),list(range(1,self.num_nodes))]).long()
         self.edge_attr = torch.ones(self.num_nodes-1)
@@ -38,27 +37,49 @@ class GraphEnv():
 
     def step(self,action):
         new_feature_matrix = torch.zeros(self.feature_matrix.shape)
-        new_feature_matrix[:,self.IS_ROBOT_GOAL] = self.feature_matrix[:,self.IS_ROBOT_GOAL]
-        for n in range(self.feature_matrix.size()[self.IS_ROBOT]):
+
+        # BASE STAYS
+        new_feature_matrix[:,self.IS_BASE] = self.feature_matrix[:,self.IS_BASE]
+
+        # WHAT WAS KNOWN IS STILL KNOWN
+        new_feature_matrix[:,self.IS_KNOWN_ROBOT] = self.feature_matrix[:,self.IS_KNOWN_ROBOT]
+        new_feature_matrix[:,self.IS_KNOWN_BASE] = self.feature_matrix[:,self.IS_KNOWN_BASE]
+
+        # MOVE ROBOT & EXPLORE
+        for n in range(self.num_nodes):
             if self.feature_matrix[n][self.IS_ROBOT]: # is robot
                 u, v = self.incident_edges(n)[action[n]]
                 if u == n and v == n: # stay
                     new_feature_matrix[v][self.IS_ROBOT] = True
-                elif u == n and not self.feature_matrix[v][self.IS_ROBOT] and not new_feature_matrix[v][self.IS_ROBOT]:
+                elif u == n and not self.feature_matrix[v][self.IS_ROBOT] and not new_feature_matrix[v][self.IS_ROBOT] and not new_feature_matrix[v][self.IS_BASE]:
                     new_feature_matrix[v][self.IS_ROBOT] = True
-                elif v == n and not self.feature_matrix[u][self.IS_ROBOT] and not new_feature_matrix[u][self.IS_ROBOT]:
+                    new_feature_matrix[v][self.IS_KNOWN_ROBOT] = True
+                elif v == n and not self.feature_matrix[u][self.IS_ROBOT] and not new_feature_matrix[u][self.IS_ROBOT] and not new_feature_matrix[u][self.IS_BASE]:
                     new_feature_matrix[u][self.IS_ROBOT] = True
+                    new_feature_matrix[u][self.IS_KNOWN_ROBOT] = True
                 else:
                     new_feature_matrix[n][self.IS_ROBOT] = True # wanted to move but couldn't
+
+        # SHARE
+        for n in range(self.num_nodes):
+            if new_feature_matrix[n][self.IS_ROBOT]: # is robot
+                if (n, torch.argmax(new_feature_matrix[:,self.IS_BASE])) in self.incident_edges(n) or (torch.argmax(new_feature_matrix[:,self.IS_BASE]), n) in self.incident_edges(n):
+                    new_feature_matrix[:,self.IS_KNOWN_BASE] = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT], new_feature_matrix[:,self.IS_KNOWN_BASE])
+
+        # COLLECT IMMEDIATE REWARD
+        reward, done = self.get_robot_reward(self.feature_matrix, new_feature_matrix)
         self.feature_matrix = new_feature_matrix
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
-        reward, done = self.get_reward()
         return self.state, reward, done, None
 
-    def get_reward(self):
-        reward, done = 0, False
-        if (self.feature_matrix == self.goal_feature_matrix).all():
-            reward, done = 10, True
+    def get_reward(self, old_feature_matrix, new_feature_matrix):
+        done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
+        reward = 100*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        return reward, done
+
+    def get_robot_reward(self, old_feature_matrix, new_feature_matrix):
+        done = new_feature_matrix[:,self.IS_KNOWN_ROBOT].all().long()
+        reward = 100*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
         return reward, done
 
 class TestEnv():

@@ -23,6 +23,8 @@ class Graph_A2C():
 
     def trainIters(self, env, actor, critic, max_tries=100, plot=False):
         scores = []
+        total_rewards = []
+        explored_all = []
         optimizerA = optim.Adam(actor.parameters(), lr=self.lr)
         optimizerC = optim.Adam(critic.parameters(), lr=self.lr)
         for iter in range(self.n_iters):
@@ -41,7 +43,7 @@ class Graph_A2C():
                 # print(next_state.x[:,0].numpy(),next_state.x[:,1].numpy())
 
                 # sum up the log_probs of the action taken where there are agents
-                mask = state.x[:,0]
+                mask = state.x[:,env.IS_ROBOT]
                 log_prob = dist.log_prob(action)[mask.bool()].sum(-1).unsqueeze(0)
 
                 log_probs.append(log_prob)
@@ -52,12 +54,17 @@ class Graph_A2C():
                 state = next_state
 
                 if done:
-                    print('Iteration: {}, Score: {}'.format(iter, i+1))
+                    print('Iteration: {}, Steps: {}, Rewards: {}'.format(iter, i+1, torch.sum(torch.cat(rewards)).item()))
                     scores.append(i+1)
+                    total_rewards.append(torch.sum(torch.cat(rewards)).item())
+                    explored_all.append(1)
                     break
 
                 if i == max_tries:
-                    print('attempts exceeded')
+                    print('Iteration: {}, Steps: {}, Rewards: {}'.format(iter, i+1, torch.sum(torch.cat(rewards)).item()))
+                    scores.append(i+1)
+                    total_rewards.append(torch.sum(torch.cat(rewards)).item())
+                    explored_all.append(0)
                     break
 
 
@@ -79,24 +86,36 @@ class Graph_A2C():
             optimizerA.step()
             optimizerC.step()
 
+        print(f"Explored the whole graph {100*sum(explored_all)/len(explored_all)}% of the time")
+
         if plot:
-            plt.plot(scores)
+            plt.plot(scores,label="steps")
+            # plt.plot(total_rewards, label="sum rewards")
+            plt.legend()
             plt.title("Time until goal state reached over training episodes")
             plt.show()
 
-    def play(self, env, actor):
+    def play(self, env, actor, max_tries=50):
         state = env.reset()
-        print("state:",state.x[:,0].numpy())
+        print("state:",state.x[:,env.IS_ROBOT].numpy())
+        print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
 
-        for i in range(50):
+        for i in range(max_tries):
             dist = actor(state)
 
             action = dist.sample()
             print("action:",action.numpy())
             next_state, reward, done, _ = env.step(action.cpu().numpy())
+            print("reward:",reward)
+            if reward:
+                print("**********")
+                print("")
+            else:
+                print("")
 
             state = next_state
-            print("state:",state.x[:,0].numpy())
+            print("state:",state.x[:,env.IS_ROBOT].numpy())
+            print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
             if done:
                 print('Done in {} steps'.format(i+1))
                 break
