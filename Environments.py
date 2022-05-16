@@ -26,6 +26,13 @@ class GraphEnv():
         self.__init__()
         return self.state
 
+    def change_env(self):
+        self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
+        self.feature_matrix[-1][self.IS_BASE], self.feature_matrix[-1][self.IS_KNOWN_BASE], self.feature_matrix[-1][self.IS_KNOWN_ROBOT] = True, True, True
+        self.feature_matrix[-2][self.IS_ROBOT], self.feature_matrix[-2][self.IS_KNOWN_ROBOT], self.feature_matrix[-2][self.IS_KNOWN_BASE] = True, True, True
+        self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
+        return self.state
+
     def incident_edges(self, node_idx): # list of tuples
         incident_edges = []
         for u, v in zip(self.edge_index[0],self.edge_index[1]):
@@ -71,6 +78,12 @@ class GraphEnv():
         self.feature_matrix = new_feature_matrix
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
         return self.state, reward, done, None
+
+    # def get_both_reward(self, old_feature_matrix, new_feature_matrix):
+    #     done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
+    #     reward = 10*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
+    #     reward += 100*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+    #     return reward, done
 
     def get_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()

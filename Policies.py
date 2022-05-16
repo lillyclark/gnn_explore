@@ -28,7 +28,10 @@ class Graph_A2C():
         optimizerA = optim.Adam(actor.parameters(), lr=self.lr)
         optimizerC = optim.Adam(critic.parameters(), lr=self.lr)
         for iter in range(self.n_iters):
-            state = env.reset()
+            if np.random.random() < 0.5 or True:
+                state = env.reset()
+            else:
+                state = env.change_env()
             log_probs = []
             values = []
             rewards = []
@@ -96,9 +99,11 @@ class Graph_A2C():
             plt.show()
 
     def play(self, env, actor, max_tries=50):
+        # state = env.change_env()
         state = env.reset()
         print("state:",state.x[:,env.IS_ROBOT].numpy())
         print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
+        print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
         for i in range(max_tries):
             dist = actor(state)
@@ -116,6 +121,7 @@ class Graph_A2C():
             state = next_state
             print("state:",state.x[:,env.IS_ROBOT].numpy())
             print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
+            print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
             if done:
                 print('Done in {} steps'.format(i+1))
                 break
