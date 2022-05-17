@@ -28,6 +28,13 @@ class GraphEnv():
 
     def change_env(self):
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
+        self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE], self.feature_matrix[0][self.IS_KNOWN_ROBOT] = True, True, False
+        self.feature_matrix[4][self.IS_ROBOT], self.feature_matrix[4][self.IS_KNOWN_ROBOT], self.feature_matrix[4][self.IS_KNOWN_BASE] = True, True, False
+        self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
+        return self.state
+
+    def reverse_env(self):
+        self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
         self.feature_matrix[-1][self.IS_BASE], self.feature_matrix[-1][self.IS_KNOWN_BASE], self.feature_matrix[-1][self.IS_KNOWN_ROBOT] = True, True, True
         self.feature_matrix[-2][self.IS_ROBOT], self.feature_matrix[-2][self.IS_KNOWN_ROBOT], self.feature_matrix[-2][self.IS_KNOWN_BASE] = True, True, True
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
@@ -71,10 +78,12 @@ class GraphEnv():
         for n in range(self.num_nodes):
             if new_feature_matrix[n][self.IS_ROBOT]: # is robot
                 if (n, torch.argmax(new_feature_matrix[:,self.IS_BASE])) in self.incident_edges(n) or (torch.argmax(new_feature_matrix[:,self.IS_BASE]), n) in self.incident_edges(n):
+                    # todo (right now a fully two way sync)
                     new_feature_matrix[:,self.IS_KNOWN_BASE] = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT], new_feature_matrix[:,self.IS_KNOWN_BASE])
+                    new_feature_matrix[:,self.IS_KNOWN_ROBOT] = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT], new_feature_matrix[:,self.IS_KNOWN_BASE])
 
         # COLLECT IMMEDIATE REWARD
-        reward, done = self.get_robot_reward(self.feature_matrix, new_feature_matrix)
+        reward, done = self.get_reward(self.feature_matrix, new_feature_matrix)
         self.feature_matrix = new_feature_matrix
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
         return self.state, reward, done, None
