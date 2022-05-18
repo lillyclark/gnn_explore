@@ -3,7 +3,8 @@ import torch
 from torch_geometric.data import Data
 
 class GraphEnv():
-    def __init__(self):
+    def __init__(self, reward_name="base_reward"):
+        self.reward_name = reward_name
         self.IS_BASE = 0
         self.IS_ROBOT = 1
         self.IS_KNOWN_BASE = 2
@@ -23,7 +24,7 @@ class GraphEnv():
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
 
     def reset(self):
-        self.__init__()
+        self.__init__(reward_name=self.reward_name)
         return self.state
 
     def change_env(self):
@@ -83,7 +84,12 @@ class GraphEnv():
                     new_feature_matrix[:,self.IS_KNOWN_ROBOT] = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT], new_feature_matrix[:,self.IS_KNOWN_BASE])
 
         # COLLECT IMMEDIATE REWARD
-        reward, done = self.get_reward(self.feature_matrix, new_feature_matrix)
+        if self.reward_name == "base_reward":
+            reward, done = self.get_reward(self.feature_matrix, new_feature_matrix)
+        elif self.reward_name == "robot_reward":
+            reward, done = self.get_robot_reward(self.feature_matrix, new_feature_matrix)
+        else:
+            raise NotImplementedError
         self.feature_matrix = new_feature_matrix
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
         return self.state, reward, done, None

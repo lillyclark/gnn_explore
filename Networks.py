@@ -18,6 +18,49 @@ from typing import Optional
 import numpy as np
 
 
+class SimpleActor(torch.nn.Module):
+    def __init__(self, num_node_features, num_nodes, num_actions):
+        super(SimpleActor, self).__init__()
+        self.num_node_features = num_node_features
+        self.num_nodes = num_nodes
+        self.num_actions = num_actions
+
+        self.lin1 = torch.nn.Linear(self.num_node_features*self.num_nodes, 128)
+        self.lin2 = torch.nn.Linear(128, 256)
+        self.lin3 = torch.nn.Linear(256, self.num_actions*self.num_nodes)
+
+    def forward(self, data, prob=0.0, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+        x = x.reshape(-1,self.num_node_features*self.num_nodes)
+        x = self.lin1(x)
+        x = F.relu(x)
+        x = self.lin2(x)
+        x = F.relu(x)
+        x = self.lin3(x)
+        x = x.reshape(self.num_nodes,self.num_actions)
+        return Categorical(F.softmax(x, dim=-1))
+
+class SimpleCritic(torch.nn.Module):
+    def __init__(self, num_node_features, num_nodes):
+        super(SimpleCritic, self).__init__()
+        self.num_node_features = num_node_features
+        self.num_nodes = num_nodes
+
+        self.lin1 = torch.nn.Linear(self.num_node_features*self.num_nodes, 128)
+        self.lin2 = torch.nn.Linear(128, 256)
+        self.lin3 = torch.nn.Linear(256, self.num_nodes)
+
+    def forward(self, data, prob=0.0, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+        x = x.reshape(-1,self.num_node_features*self.num_nodes)
+        x = self.lin1(x)
+        x = F.relu(x)
+        x = self.lin2(x)
+        x = F.relu(x)
+        x = self.lin3(x)
+        x = x.reshape(self.num_nodes,-1)
+        return x
+
 class GCN(torch.nn.Module):
     def __init__(self):
         super(GCN, self).__init__()
@@ -99,10 +142,10 @@ class GGNNActor(torch.nn.Module):
 
     def forward(self, data, prob=0.0, batch=None):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
-
-        x = self.gconv1(x, edge_index, edge_weight=edge_weight)
-        x = F.relu(x)
-        x = F.dropout(x, p=prob)
+        for i in range(1):
+            x = self.gconv1(x, edge_index, edge_weight=edge_weight)
+            x = F.relu(x)
+            x = F.dropout(x, p=prob)
         x = self.fully_con1(x)
         return Categorical(F.softmax(x, dim=-1))
 
@@ -117,9 +160,10 @@ class GGNNCritic(torch.nn.Module):
     def forward(self, data, prob=0.0, batch=None):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
 
-        x = self.gconv1(x, edge_index, edge_weight=edge_weight)
-        x = F.relu(x)
-        x = F.dropout(x, p=prob)
+        for i in range(1):
+            x = self.gconv1(x, edge_index, edge_weight=edge_weight)
+            x = F.relu(x)
+            x = F.dropout(x, p=prob)
         x = self.fully_con1(x)
         # x = global_mean_pool(x, batch).mean(dim=1)
         return x

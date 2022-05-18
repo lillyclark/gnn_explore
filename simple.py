@@ -1,5 +1,5 @@
 import torch
-from Networks import Actor, Critic, GCNActor, GCNCritic, GGNNActor, GGNNCritic
+from Networks import *
 from Environments import TestEnv, GraphEnv
 from Policies import A2C, Graph_A2C
 
@@ -24,9 +24,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # A2C.trainIters(env, actor, critic, max_tries=100, plot=True)
 # A2C.play(env, actor, max_tries=100)
 
-env = GraphEnv()
-actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
-critic = GGNNCritic(env.num_node_features).to(device)
-A2C = Graph_A2C(device=device, n_iters=100, lr=0.001, gamma=0.9)
+# env = GraphEnv()
+# actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
+# critic = GGNNCritic(env.num_node_features).to(device)
+# A2C = Graph_A2C(device=device, n_iters=100, lr=0.001, gamma=0.9)
+# A2C.trainIters(env, actor, critic, max_tries=100, plot=True)
+# A2C.play(env, actor, max_tries=100)
+
+env = GraphEnv(reward_name = "base_reward")
+actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
+critic = SimpleCritic(env.num_node_features, env.num_nodes).to(device)
+A2C = Graph_A2C(device=device, n_iters=500, lr=0.001, gamma=0.9)
 A2C.trainIters(env, actor, critic, max_tries=100, plot=True)
 A2C.play(env, actor, max_tries=100)
