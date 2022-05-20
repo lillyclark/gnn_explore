@@ -19,8 +19,8 @@ class GraphEnv():
         self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE], self.feature_matrix[0][self.IS_KNOWN_ROBOT] = True, True, True
         self.feature_matrix[1][self.IS_ROBOT], self.feature_matrix[1][self.IS_KNOWN_ROBOT], self.feature_matrix[1][self.IS_KNOWN_BASE] = True, True, True
 
-        self.edge_index = torch.Tensor([list(range(0,self.num_nodes-1)),list(range(1,self.num_nodes))]).long()
-        self.edge_attr = torch.ones(self.num_nodes-1)
+        self.edge_index = torch.Tensor([list(range(0,self.num_nodes-1))+list(range(1,self.num_nodes)),list(range(1,self.num_nodes))+list(range(0,self.num_nodes-1))]).long()
+        self.edge_attr = torch.ones(2*(self.num_nodes-1))
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
 
     def reset(self):
@@ -44,7 +44,7 @@ class GraphEnv():
     def incident_edges(self, node_idx): # list of tuples
         incident_edges = []
         for u, v in zip(self.edge_index[0],self.edge_index[1]):
-            if node_idx == u or node_idx == v:
+            if node_idx == v:
                 incident_edges.append((u,v))
         for extra_edge in range(self.num_actions - len(incident_edges)):
             incident_edges.append((node_idx,node_idx))
@@ -63,13 +63,8 @@ class GraphEnv():
         # MOVE ROBOT & EXPLORE
         for n in range(self.num_nodes):
             if self.feature_matrix[n][self.IS_ROBOT]: # is robot
-                u, v = self.incident_edges(n)[action[n]]
-                if u == n and v == n: # stay
-                    new_feature_matrix[v][self.IS_ROBOT] = True
-                elif u == n and not self.feature_matrix[v][self.IS_ROBOT] and not new_feature_matrix[v][self.IS_ROBOT] and not new_feature_matrix[v][self.IS_BASE]:
-                    new_feature_matrix[v][self.IS_ROBOT] = True
-                    new_feature_matrix[v][self.IS_KNOWN_ROBOT] = True
-                elif v == n and not self.feature_matrix[u][self.IS_ROBOT] and not new_feature_matrix[u][self.IS_ROBOT] and not new_feature_matrix[u][self.IS_BASE]:
+                u, v = self.incident_edges(n)[action[n]] # v = n
+                if not self.feature_matrix[u][self.IS_ROBOT] and not new_feature_matrix[u][self.IS_ROBOT] and not new_feature_matrix[u][self.IS_BASE]: # collision avoidance
                     new_feature_matrix[u][self.IS_ROBOT] = True
                     new_feature_matrix[u][self.IS_KNOWN_ROBOT] = True
                 else:
@@ -78,7 +73,7 @@ class GraphEnv():
         # SHARE
         for n in range(self.num_nodes):
             if new_feature_matrix[n][self.IS_ROBOT]: # is robot
-                if (n, torch.argmax(new_feature_matrix[:,self.IS_BASE])) in self.incident_edges(n) or (torch.argmax(new_feature_matrix[:,self.IS_BASE]), n) in self.incident_edges(n):
+                if (torch.argmax(new_feature_matrix[:,self.IS_BASE]), n) in self.incident_edges(n):
                     # todo (right now a fully two way sync)
                     new_feature_matrix[:,self.IS_KNOWN_BASE] = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT], new_feature_matrix[:,self.IS_KNOWN_BASE])
                     new_feature_matrix[:,self.IS_KNOWN_ROBOT] = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT], new_feature_matrix[:,self.IS_KNOWN_BASE])

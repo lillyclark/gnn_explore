@@ -28,7 +28,7 @@ class Graph_A2C():
         optimizerA = optim.Adam(actor.parameters(), lr=self.lr)
         optimizerC = optim.Adam(critic.parameters(), lr=self.lr)
         for iter in range(self.n_iters):
-            state = env.reset()
+            state = env.reset() #env.change_env()
             log_probs = []
             values = []
             rewards = []
@@ -89,14 +89,17 @@ class Graph_A2C():
 
         if plot:
             plt.plot(scores,label="steps")
-            # plt.plot(total_rewards, label="sum rewards")
             plt.legend()
             plt.title("Time until goal state reached over training episodes")
             plt.show()
 
+            plt.plot(total_rewards, label="sum rewards")
+            plt.legend()
+            plt.title("Rewards over training episodes")
+            plt.show()
+
     def play(self, env, actor, max_tries=50):
-        # state = env.change_env()
-        state = env.reset()
+        state = env.reset() #env.change_env()
         print("state:",state.x[:,env.IS_ROBOT].numpy())
         print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
         print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
