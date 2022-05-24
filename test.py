@@ -8,44 +8,37 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# env = TestEnv()
-# state_size = env.state.shape[0]
-# action_size = env.num_actions
-# print("state_size",state_size)
-# print("action_size",action_size)
-#
-# actor = Actor(state_size, action_size).to(device)
-# critic = Critic(state_size, action_size).to(device)
-# A2C = A2C(device=device, n_iters=500, lr=0.001, gamma=0.99)
-# A2C.trainIters(env, actor, critic)
-# A2C.play(env, actor)
+# mode = ['train','write']
+# mode = ['read']
+# mode = ['read','train','write']
+mode = ['train','test']
 
-env = GraphEnv(reward_name = "base_reward")
-actor = GCNActor(env.num_node_features, env.num_actions).to(device)
-critic = GCNCritic(env.num_node_features).to(device)
-A2C = Graph_A2C(device=device, n_iters=1000000, lr=0.001, gamma=0.9)
-A2C.trainIters(env, actor, critic, max_tries=100, plot=True)
-print("GCN with 7 convolutions, lr 0.001, gamma 0.9, a million iters")
-A2C.play(env, actor, max_tries=100)
-print("GCN with 7 convolutions, lr 0.001, gamma 0.9, a million iters")
+a_name = 'models/sa_.pt'
+c_name = 'models/sc_.pt'
+a_name1 = 'models/sa_.pt'
+c_name1 = 'models/sc_.pt'
 
-# env = GraphEnv(reward_name = "robot_reward")
-# actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
-# critic = GGNNCritic(env.num_node_features).to(device)
-# A2C = Graph_A2C(device=device, n_iters=500, lr=0.001, gamma=0.9)
-# A2C.trainIters(env, actor, critic, max_tries=100, plot=True)
-# A2C.play(env, actor, max_tries=100)
+env = GraphEnv(reward_name = "base_reward", has_master = False)
 
-# env = GraphEnv(reward_name = "robot_reward")
-# actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
-# critic = SimpleCritic(env.num_node_features, env.num_nodes).to(device)
-# A2C = Graph_A2C(device=device, n_iters=500, lr=0.001, gamma=0.9)
-# A2C.trainIters(env, actor, critic, max_tries=100, plot=True)
-# A2C.play(env, actor, max_tries=100)
+# actor = GCNActor(env.num_node_features, env.num_actions).to(device)
+# critic = GCNCritic(env.num_node_features).to(device)
+actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
+critic = SimpleCritic(env.num_node_features, env.num_nodes).to(device)
 
-# env = GraphEnv(reward_name = "robot_reward")
-# actor = LinearAggActor(env.num_node_features, env.num_actions).to(device)
-# critic = LinearAggCritic(env.num_node_features).to(device)
-# A2C = Graph_A2C(device=device, n_iters=1000, lr=0.001, gamma=0.9)
-# A2C.trainIters(env, actor, critic, max_tries=100, plot=True)
-# A2C.play(env, actor, max_tries=100)
+A2C = Graph_A2C(device=device, n_iters=100, lr=0.001, gamma=0.9)
+
+if 'read' in mode:
+    a = torch.load(a_name)
+    c = torch.load(c_name)
+    actor.load_state_dict(a)
+    critic.load_state_dict(c)
+
+if 'train' in mode:
+    A2C.trainIters(env, actor, critic, max_tries=500, plot=False)
+
+if 'write' in mode:
+    torch.save(actor.state_dict(), a_name1)
+    torch.save(critic.state_dict(), c_name1)
+
+if 'test' in mode:
+    A2C.play(env, actor, critic, max_tries=100)

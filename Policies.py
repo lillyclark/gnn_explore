@@ -98,15 +98,21 @@ class Graph_A2C():
             plt.title("Rewards over training episodes")
             plt.show()
 
-    def play(self, env, actor, max_tries=50):
+    def play(self, env, actor, critic, max_tries=50, v=False):
         state = env.reset() #env.change_env()
         print("state:",state.x[:,env.IS_ROBOT].numpy())
-        print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
-        print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
+        if v:
+            print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
+            print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
         for i in range(max_tries):
             dist = actor(state)
-
+            if v:
+                print("dist:")
+                print(np.round(dist.probs.detach().numpy().T,2))
+            value = critic(state)
+            if v:
+                print("value:",value.detach().numpy().T)
             action = dist.sample()
             print("action:",action.numpy())
             next_state, reward, done, _ = env.step(action.cpu().numpy())
@@ -119,8 +125,9 @@ class Graph_A2C():
 
             state = next_state
             print("state:",state.x[:,env.IS_ROBOT].numpy())
-            print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
-            print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
+            if v:
+                print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
+                print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
             if done:
                 print('Done in {} steps'.format(i+1))
                 break

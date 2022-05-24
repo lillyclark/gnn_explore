@@ -166,7 +166,7 @@ class GCNActor(torch.nn.Module):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x = self.conv1(x, edge_index, edge_weight=edge_weight)
         x = F.relu(x)
-        for i in range(6):
+        for i in range(1):
             x = self.conv2(x, edge_index, edge_weight=edge_weight)
             x = F.relu(x)
         x = F.dropout(x, p=prob)
@@ -185,7 +185,7 @@ class GCNCritic(torch.nn.Module):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x = self.conv1(x, edge_index, edge_weight=edge_weight)
         x = F.relu(x)
-        for i in range(6):
+        for i in range(1):
             x = self.conv2(x, edge_index, edge_weight=edge_weight)
             x = F.relu(x)
         x = F.dropout(x, p=prob)

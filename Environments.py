@@ -3,48 +3,74 @@ import torch
 from torch_geometric.data import Data
 
 class GraphEnv():
-    def __init__(self, reward_name="base_reward"):
+    def __init__(self, reward_name="base_reward", has_master=False):
         self.reward_name = reward_name
+        self.has_master = has_master
+
+        self.num_actions = 3 # each node has max 2 edges
+
         self.IS_BASE = 0
         self.IS_ROBOT = 1
         self.IS_KNOWN_BASE = 2
         self.IS_KNOWN_ROBOT = 3
-
-        self.num_node_features = 4 # is_robot, is_goal
-
-        self.num_actions = 3 # each node has max 2 edges
+        self.num_node_features = 4
         self.num_nodes = 8
+
+        if self.has_master:
+            self.IS_MASTER_NODE = 4 # not really part of the env
+            self.num_node_features = 5
+            self.num_nodes = 9
 
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
         self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE], self.feature_matrix[0][self.IS_KNOWN_ROBOT] = True, True, True
         self.feature_matrix[1][self.IS_ROBOT], self.feature_matrix[1][self.IS_KNOWN_ROBOT], self.feature_matrix[1][self.IS_KNOWN_BASE] = True, True, True
 
-        self.edge_index = torch.Tensor([list(range(0,self.num_nodes-1))+list(range(1,self.num_nodes)),list(range(1,self.num_nodes))+list(range(0,self.num_nodes-1))]).long()
-        self.edge_attr = torch.ones(2*(self.num_nodes-1))
+        if self.has_master:
+            self.feature_matrix[-1][self.IS_MASTER_NODE], self.feature_matrix[-1][self.IS_KNOWN_ROBOT], self.feature_matrix[-1][self.IS_KNOWN_BASE] = True, True, True
+
+        right_i = torch.Tensor(list(range(0,self.num_nodes-1)))
+        right_j = torch.Tensor(list(range(1,self.num_nodes)))
+        left_i = right_j
+        left_j = right_i
+        self.edge_index = torch.stack([torch.cat([right_i,left_i]),torch.cat([right_j,left_j])]).long()
+
+        if self.has_master:
+            right_i = torch.Tensor(list(range(0,self.num_nodes-2)))
+            right_j = torch.Tensor(list(range(1,self.num_nodes-1)))
+            left_i = right_j
+            left_j = right_i
+            to_master_i = torch.Tensor(list(range(0,self.num_nodes-1)))
+            to_master_j = torch.Tensor([self.num_nodes-1]*(self.num_nodes-1))
+            from_master_i = to_master_j
+            from_master_j = to_master_i
+            self.edge_index = torch.stack([torch.cat([right_i,left_i,to_master_i,from_master_i]),torch.cat([right_j,left_j,to_master_j,from_master_j])]).long()
+
+        # self.edge_index = torch.Tensor([list(range(0,self.num_nodes-2))+list(range(1,self.num_nodes-1)),list(range(1,self.num_nodes-1))+list(range(0,self.num_nodes-2))).long()
+        self.edge_attr = torch.ones(self.edge_index.size()[1])
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
 
     def reset(self):
-        self.__init__(reward_name=self.reward_name)
+        self.__init__(reward_name=self.reward_name, has_master=self.has_master)
         return self.state
 
     def change_env(self):
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
         self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE], self.feature_matrix[0][self.IS_KNOWN_ROBOT] = True, True, False
         self.feature_matrix[4][self.IS_ROBOT], self.feature_matrix[4][self.IS_KNOWN_ROBOT], self.feature_matrix[4][self.IS_KNOWN_BASE] = True, True, False
+        if self.has_master:
+            self.feature_matrix[-1][self.IS_MASTER_NODE], self.feature_matrix[-1][self.IS_KNOWN_ROBOT], self.feature_matrix[-1][self.IS_KNOWN_BASE] = True, True, True
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
         return self.state
 
-    def reverse_env(self):
-        self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
-        self.feature_matrix[-1][self.IS_BASE], self.feature_matrix[-1][self.IS_KNOWN_BASE], self.feature_matrix[-1][self.IS_KNOWN_ROBOT] = True, True, True
-        self.feature_matrix[-2][self.IS_ROBOT], self.feature_matrix[-2][self.IS_KNOWN_ROBOT], self.feature_matrix[-2][self.IS_KNOWN_BASE] = True, True, True
-        self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
-        return self.state
+    def is_incident(self,n,u,v):
+        if self.has_master:
+            return (n == v and not self.feature_matrix[u][self.IS_MASTER_NODE])
+        return (n == v)
 
     def incident_edges(self, node_idx): # list of tuples
         incident_edges = []
         for u, v in zip(self.edge_index[0],self.edge_index[1]):
-            if node_idx == v:
+            if self.is_incident(node_idx, u, v):
                 incident_edges.append((u,v))
         for extra_edge in range(self.num_actions - len(incident_edges)):
             incident_edges.append((node_idx,node_idx))
@@ -52,6 +78,10 @@ class GraphEnv():
 
     def step(self,action):
         new_feature_matrix = torch.zeros(self.feature_matrix.shape)
+
+        # MASTER_NODE STAYS
+        if self.has_master:
+            new_feature_matrix[:,self.IS_MASTER_NODE] = self.feature_matrix[:,self.IS_MASTER_NODE]
 
         # BASE STAYS
         new_feature_matrix[:,self.IS_BASE] = self.feature_matrix[:,self.IS_BASE]
@@ -88,12 +118,6 @@ class GraphEnv():
         self.feature_matrix = new_feature_matrix
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
         return self.state, reward, done, None
-
-    # def get_both_reward(self, old_feature_matrix, new_feature_matrix):
-    #     done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
-    #     reward = 10*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
-    #     reward += 100*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
-    #     return reward, done
 
     def get_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
