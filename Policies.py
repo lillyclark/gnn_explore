@@ -7,11 +7,12 @@ from itertools import count
 import matplotlib.pyplot as plt
 
 class Graph_A2C():
-    def __init__(self, device, n_iters, lr, gamma):
+    def __init__(self, device, n_iters, a_lr, c_lr, gamma):
         self.device = device
         self.gamma = gamma
         self.n_iters = n_iters
-        self.lr = lr
+        self.a_lr = a_lr
+        self.c_lr = c_lr
 
     def compute_returns(self,next_value, rewards, masks):
         R = next_value
@@ -25,8 +26,10 @@ class Graph_A2C():
         scores = []
         total_rewards = []
         explored_all = []
-        optimizerA = optim.Adam(actor.parameters(), lr=self.lr)
-        optimizerC = optim.Adam(critic.parameters(), lr=self.lr)
+        actor_losses = []
+        critic_losses = []
+        optimizerA = optim.Adam(actor.parameters(), lr=self.a_lr)
+        optimizerC = optim.Adam(critic.parameters(), lr=self.c_lr)
         for iter in range(self.n_iters):
             state = env.reset() #env.change_env()
             log_probs = []
@@ -68,6 +71,7 @@ class Graph_A2C():
                     break
 
             next_value = critic(next_state)
+            # TODO should the next value really be the critic's guess?
             returns = self.compute_returns(next_value, rewards, masks)
 
             log_probs = torch.cat(log_probs)
@@ -77,6 +81,8 @@ class Graph_A2C():
 
             actor_loss = -(log_probs * advantage.detach()).mean()
             critic_loss = advantage.pow(2).mean()
+            actor_losses.append(actor_loss.item())
+            critic_losses.append(critic_loss.item())
 
             optimizerA.zero_grad()
             optimizerC.zero_grad()
@@ -98,6 +104,14 @@ class Graph_A2C():
             plt.title("Rewards over training episodes")
             plt.show()
 
+            fig, (ax0, ax1) = plt.subplots(1,2)
+            ax0.plot(actor_losses)
+            ax0.set_title("Actor loss")
+            ax1.plot(critic_losses)
+            ax1.set_title("Critic loss")
+            plt.show()
+
+
     def play(self, env, actor, critic, max_tries=50, v=False):
         state = env.reset() #env.change_env()
         print("state:",state.x[:,env.IS_ROBOT].numpy())
@@ -110,8 +124,8 @@ class Graph_A2C():
             if v:
                 print("dist:")
                 print(np.round(dist.probs.detach().numpy().T,2))
-            value = critic(state)
             if v:
+                value = critic(state)
                 print("value:",value.detach().numpy().T)
             action = dist.sample()
             print("action:",action.numpy())

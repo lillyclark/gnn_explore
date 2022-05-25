@@ -34,7 +34,7 @@ class LinearAgg(MessagePassing):
 class LinearAggActor(torch.nn.Module):
     def __init__(self, num_node_features, num_actions):
         super(LinearAggActor, self).__init__()
-        self.receptive_field = 7
+        self.receptive_field = 1
         self.num_node_features = num_node_features
         self.num_actions = num_actions
         self.hidden_units = 16
@@ -65,7 +65,7 @@ class LinearAggActor(torch.nn.Module):
 class LinearAggCritic(torch.nn.Module):
     def __init__(self, num_node_features):
         super(LinearAggCritic, self).__init__()
-        self.receptive_field = 7
+        self.receptive_field = 1
         self.num_node_features = num_node_features
         self.hidden_units = 16
 
