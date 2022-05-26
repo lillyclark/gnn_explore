@@ -8,15 +8,15 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-mode = ['train','test','write']
+# mode = ['train','test','write']
 # mode = ['read']
-# mode = ['read','train','test','write']
+mode = ['read','train','test','write']
 # mode = ['train','test']
 
-a_name = 'models/sf6_gcn_a.pt'
-c_name = 'models/sf6_gcn_c.pt'
-a_name1 = 'models/sf6_gcn_a.pt'
-c_name1 = 'models/sf6_gcn_c.pt'
+a_name = 'models/critictest_s_a.pt'
+c_name = 'models/critictest_s_c.pt'
+a_name1 = 'models/critictest_s_a.pt'
+c_name1 = 'models/critictest_s_c.pt'
 
 # a_name = 'models/s_a.pt'
 # c_name = 'models/s_c.pt'

@@ -28,6 +28,7 @@ class Graph_A2C():
         explored_all = []
         actor_losses = []
         critic_losses = []
+
         optimizerA = optim.Adam(actor.parameters(), lr=self.a_lr)
         optimizerC = optim.Adam(critic.parameters(), lr=self.c_lr)
         for iter in range(self.n_iters):
@@ -48,9 +49,10 @@ class Graph_A2C():
                 # sum up the log_probs of the action taken where there are agents
                 mask = state.x[:,env.IS_ROBOT]
                 log_prob = dist.log_prob(action)[mask.bool()].sum(-1).unsqueeze(0)
+                real_value = value[mask.bool()].sum(-1)
 
                 log_probs.append(log_prob)
-                values.append(value)
+                values.append(real_value)
                 rewards.append(torch.tensor([reward], dtype=torch.float, device=self.device))
                 masks.append(torch.tensor([1-done], dtype=torch.float, device=self.device))
 
@@ -71,8 +73,8 @@ class Graph_A2C():
                     break
 
             next_value = critic(next_state)
-            # TODO should the next value really be the critic's guess?
-            returns = self.compute_returns(next_value, rewards, masks)
+            real_next_value = next_value[mask.bool()].sum(-1)
+            returns = self.compute_returns(real_next_value, rewards, masks)
 
             log_probs = torch.cat(log_probs)
             returns = torch.cat(returns).detach()
