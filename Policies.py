@@ -10,6 +10,136 @@ import matplotlib.pyplot as plt
 import wandb
 wandb.init(project="simple-world-explore", entity="lillyclark", config={})
 
+class A2C_Shared():
+    def __init__(self, device, n_iters, lr, gamma, run_name="tmp"):
+        self.device = device
+        self.gamma = gamma
+        self.n_iters = n_iters
+        self.lr = lr
+
+        wandb.config.update({
+            "gamma": self.gamma,
+            "lr": self.lr,
+            "n_iters": self.n_iters})
+
+        wandb.run.name = run_name+wandb.run.id
+
+    def compute_returns(self,next_value, rewards, dones):
+        R = next_value
+        returns = []
+        for step in reversed(range(len(rewards))):
+            R = rewards[step] + self. gamma * R * dones[step]
+            returns.insert(0, R)
+        return returns
+
+    def trainIters(self, env, a2c_net, crit_coeff=1, ent_coeff=0, decrease_lr=0.997, max_tries=100, plot=False):
+        decrease_lr = 1
+        print("ignoring dynamic learning rate")
+
+        wandb.config.update({"max_tries":max_tries,
+            "a2c":a2c_net,
+            "a2c_k":a2c_net.k,
+            "lr_factor":decrease_lr,
+            "critic_coeff":crit_coeff,
+            "entropy_coeff":ent_coeff})
+
+        optimizer = optim.Adam(a2c_net.parameters(), lr=self.lr, betas=(0.9, 0.999))
+        scheduler = MultiplicativeLR(optimizer, lambda iter: decrease_lr)
+
+        for iter in range(self.n_iters):
+            state = env.reset() #env.change_env()
+            log_probs = []
+            entropies = []
+            values = []
+            rewards = []
+            dones = []
+
+            for i in count():
+                dist, value = a2c_net(state)
+
+                action = dist.sample()
+                next_state, reward, done, _ = env.step(action.cpu().numpy())
+
+                # sum up the log_probs/value where there are agents
+                mask = state.x[:,env.IS_ROBOT]
+                log_prob = dist.log_prob(action)[mask.bool()].sum(-1).unsqueeze(0)
+                entr = dist.entropy()[mask.bool()].mean(-1).unsqueeze(0)
+                real_value = value[mask.bool()].sum(-1)
+
+                log_probs.append(log_prob)
+                values.append(real_value)
+                entropies.append(entr)
+                rewards.append(torch.tensor([reward], dtype=torch.float, device=self.device))
+                dones.append(torch.tensor([1-done], dtype=torch.float, device=self.device))
+
+                state = next_state
+
+                if done or (i == max_tries-1):
+                    print('Iteration: {}, Steps: {}, Rewards: {}'.format(iter, i+1, torch.sum(torch.cat(rewards)).item()))
+                    break
+
+            _, next_value = a2c_net(next_state)
+            next_mask = next_state.x[:,env.IS_ROBOT]
+            real_next_value = next_value[next_mask.bool()].sum(-1)
+            returns = self.compute_returns(real_next_value, rewards, dones)
+
+            log_probs = torch.cat(log_probs)
+            returns = torch.cat(returns).detach()
+            values = torch.cat(values)
+            advantage = returns - values
+            entropy = torch.cat(entropies).sum()
+
+            actor_loss = -(log_probs * advantage.detach()).mean()
+            critic_loss = advantage.pow(2).mean()
+
+            shared_loss = actor_loss + crit_coeff * critic_loss - ent_coeff * entropy
+
+            wandb.log({"actor_loss": actor_loss})
+            wandb.log({"critic_loss": critic_loss})
+            wandb.log({"entropy": entropy})
+            wandb.log({"shared_loss": shared_loss})
+            wandb.log({"explore_time": i+1})
+            wandb.log({"sum_reward":torch.sum(torch.cat(rewards))})
+            wandb.watch(a2c_net)
+
+            optimizer.zero_grad()
+            shared_loss.backward()
+            optimizer.step()
+            scheduler.step()
+
+    def play(self, env, a2c_net, max_tries=50, v=False):
+        state = env.reset() #env.change_env()
+        rewards = []
+        print("state:",state.x[:,env.IS_ROBOT].numpy())
+        if v:
+            print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
+            print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
+
+        for i in range(max_tries):
+            dist, value = a2c_net(state)
+            if v:
+                print("dist:")
+                print(np.round(dist.probs.detach().numpy().T,2))
+                print("value:",np.round(value.detach().numpy().T,2))
+            action = dist.sample()
+            print("action:",action.numpy())
+            next_state, reward, done, _ = env.step(action.cpu().numpy())
+            print("reward:",reward)
+            rewards.append(reward)
+            print("")
+
+            state = next_state
+            print("state:",state.x[:,env.IS_ROBOT].numpy())
+            if v:
+                print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
+                print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
+            if done:
+                print('Done in {} steps'.format(i+1))
+                break
+        wandb.log({"test_steps":i+1})
+        wandb.log({"test_reward":sum(rewards)})
+
+
 class Graph_A2C():
     def __init__(self, device, n_iters, a_lr, c_lr, gamma, run_name="tmp"):
         self.device = device
@@ -42,8 +172,8 @@ class Graph_A2C():
             "critic_k":critic.k,
             "lr_factor":decrease_lr})
 
-        optimizerA = optim.Adam(actor.parameters(), lr=self.a_lr)
-        optimizerC = optim.Adam(critic.parameters(), lr=self.c_lr)
+        optimizerA = optim.Adam(actor.parameters(), lr=self.a_lr, betas=(0.9, 0.999))
+        optimizerC = optim.Adam(critic.parameters(), lr=self.c_lr, betas=(0.9, 0.999))
         schedulerA = MultiplicativeLR(optimizerA, lambda iter: decrease_lr)
         schedulerC = MultiplicativeLR(optimizerC, lambda iter: decrease_lr)
 

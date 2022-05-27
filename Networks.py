@@ -4,7 +4,7 @@ from torch_geometric.nn import GCNConv, GatedGraphConv, MessagePassing
                                    # remove_self_loops, softmax)
 # from torch_geometric.utils.repeat import repeat
 
-import gym, os
+import os
 from itertools import count
 import torch
 import torch.nn as nn
@@ -138,6 +138,36 @@ class SimpleCritic(torch.nn.Module):
         x = self.lin3(x)
         x = x.reshape(self.num_nodes,-1)
         return x
+
+class SimpleA2C(torch.nn.Module):
+    def __init__(self, num_node_features, num_nodes, num_actions):
+        super(SimpleA2C, self).__init__()
+        self.num_node_features = num_node_features
+        self.num_nodes = num_nodes
+        self.num_actions = num_actions
+        self.k = None
+        self.lin1 = torch.nn.Linear(self.num_node_features*self.num_nodes, 128)
+        self.lin2 = torch.nn.Linear(128, 256)
+        self.lin_act = torch.nn.Linear(256, self.num_actions*self.num_nodes)
+        self.lin_crit = torch.nn.Linear(256, self.num_nodes)
+
+    def forward(self, data, prob=0.0, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+        x = x.reshape(-1,self.num_node_features*self.num_nodes)
+        x = self.lin1(x)
+        x = F.relu(x)
+        x = self.lin2(x)
+        x = F.relu(x)
+
+        # actor
+        a = self.lin_act(x)
+        a = a.reshape(self.num_nodes,self.num_actions)
+        a = Categorical(F.softmax(a, dim=-1))
+
+        # critic
+        v = self.lin_crit(x)
+        v = v.reshape(self.num_nodes, -1)
+        return a, v
 
 class GCN(torch.nn.Module):
     def __init__(self):
