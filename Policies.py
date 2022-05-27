@@ -34,26 +34,18 @@ class Graph_A2C():
             returns.insert(0, R)
         return returns
 
-    def trainIters(self, env, actor, critic, max_tries=100, plot=False):
+    def trainIters(self, env, actor, critic, decrease_lr=0.997, max_tries=100, plot=False):
         wandb.config.update({"max_tries":max_tries,
             "actor":actor,
             "actor_k":actor.k,
             "critic":critic,
-            "critic_k":critic.k})
-
-        scores = []
-        total_rewards = []
-        explored_all = []
-        actor_losses = []
-        critic_losses = []
+            "critic_k":critic.k,
+            "lr_factor":decrease_lr})
 
         optimizerA = optim.Adam(actor.parameters(), lr=self.a_lr)
         optimizerC = optim.Adam(critic.parameters(), lr=self.c_lr)
-        decrease_lr = 0.997
         schedulerA = MultiplicativeLR(optimizerA, lambda iter: decrease_lr)
         schedulerC = MultiplicativeLR(optimizerC, lambda iter: decrease_lr)
-        wandb.config.update({"lr_factor":decrease_lr})
-
 
         for iter in range(self.n_iters):
             state = env.reset() #env.change_env()
@@ -61,16 +53,14 @@ class Graph_A2C():
             values = []
             rewards = []
             dones = []
-            # print(state.x[:,0].numpy(),state.x[:,1].numpy())
 
             for i in count():
                 dist, value = actor(state), critic(state)
 
                 action = dist.sample()
                 next_state, reward, done, _ = env.step(action.cpu().numpy())
-                # print(next_state.x[:,0].numpy(),next_state.x[:,1].numpy())
 
-                # sum up the log_probs of the action taken where there are agents
+                # sum up the log_probs/value where there are agents
                 mask = state.x[:,env.IS_ROBOT]
                 log_prob = dist.log_prob(action)[mask.bool()].sum(-1).unsqueeze(0)
                 real_value = value[mask.bool()].sum(-1)
@@ -82,18 +72,8 @@ class Graph_A2C():
 
                 state = next_state
 
-                if done:
+                if done or (i == max_tries-1):
                     print('Iteration: {}, Steps: {}, Rewards: {}'.format(iter, i+1, torch.sum(torch.cat(rewards)).item()))
-                    scores.append(i+1)
-                    total_rewards.append(torch.sum(torch.cat(rewards)).item())
-                    explored_all.append(1)
-                    break
-
-                if i == max_tries-1:
-                    print('Iteration: {}, Steps: {}, Rewards: {}'.format(iter, i+1, torch.sum(torch.cat(rewards)).item()))
-                    scores.append(i+1)
-                    total_rewards.append(torch.sum(torch.cat(rewards)).item())
-                    explored_all.append(0)
                     break
 
             next_value = critic(next_state)
@@ -108,8 +88,6 @@ class Graph_A2C():
 
             actor_loss = -(log_probs * advantage.detach()).mean()
             critic_loss = advantage.pow(2).mean()
-            actor_losses.append(actor_loss.item())
-            critic_losses.append(critic_loss.item())
 
             wandb.log({"actor_loss": actor_loss})
             wandb.log({"critic_loss": critic_loss})
@@ -129,25 +107,6 @@ class Graph_A2C():
             schedulerA.step()
             schedulerC.step()
 
-        print(f"Explored the whole graph {100*sum(explored_all)/len(explored_all)}% of the time")
-
-        if plot:
-            fig, axes = plt.subplots(2,2)
-            ax0, ax1, ax2, ax3 = axes[0,0], axes[0,1], axes[1,0], axes[1,1]
-            ax0.plot(scores,label="steps")
-            ax0.set_title("Time until goal state reached over training episodes")
-
-            ax1.plot(total_rewards, label="sum rewards")
-            ax1.set_title("Rewards over training episodes")
-
-            ax2.plot(actor_losses)
-            ax2.set_title("Actor loss")
-
-            ax3.plot(critic_losses)
-            ax3.set_title("Critic loss")
-            plt.show()
-
-
     def play(self, env, actor, critic, max_tries=50, v=False):
         state = env.reset() #env.change_env()
         rewards = []
@@ -161,7 +120,6 @@ class Graph_A2C():
             if v:
                 print("dist:")
                 print(np.round(dist.probs.detach().numpy().T,2))
-            if v:
                 value = critic(state)
                 print("value:",value.detach().numpy().T)
             action = dist.sample()
@@ -169,12 +127,7 @@ class Graph_A2C():
             next_state, reward, done, _ = env.step(action.cpu().numpy())
             print("reward:",reward)
             rewards.append(reward)
-            if v:
-                if reward:
-                    print("**********")
-                    print("")
-                else:
-                    print("")
+            print("")
 
             state = next_state
             print("state:",state.x[:,env.IS_ROBOT].numpy())
