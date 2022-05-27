@@ -121,7 +121,7 @@ class GraphEnv():
 
     def get_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
-        reward = 100*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
         return reward, done
 
     def get_robot_reward(self, old_feature_matrix, new_feature_matrix):

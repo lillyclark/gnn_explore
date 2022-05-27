@@ -3,26 +3,44 @@ import numpy as np
 from Networks import Actor, Critic
 from Environments import TestEnv, GraphEnv
 import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau, MultiplicativeLR
 from itertools import count
 import matplotlib.pyplot as plt
 
+import wandb
+wandb.init(project="simple-world-explore", entity="lillyclark", config={})
+
 class Graph_A2C():
-    def __init__(self, device, n_iters, a_lr, c_lr, gamma):
+    def __init__(self, device, n_iters, a_lr, c_lr, gamma, run_name="tmp"):
         self.device = device
         self.gamma = gamma
         self.n_iters = n_iters
         self.a_lr = a_lr
         self.c_lr = c_lr
 
-    def compute_returns(self,next_value, rewards, masks):
+        wandb.config.update({
+            "gamma": self.gamma,
+            "a_lr": self.a_lr,
+            "c_lr": self.c_lr,
+            "n_iters": self.n_iters})
+
+        wandb.run.name = run_name
+
+    def compute_returns(self,next_value, rewards, dones):
         R = next_value
         returns = []
         for step in reversed(range(len(rewards))):
-            R = rewards[step] + self. gamma * R * masks[step]
+            R = rewards[step] + self. gamma * R * dones[step]
             returns.insert(0, R)
         return returns
 
     def trainIters(self, env, actor, critic, max_tries=100, plot=False):
+        wandb.config.update({"max_tries":max_tries,
+            "actor":actor,
+            "actor_k":actor.k,
+            "critic":critic,
+            "critic_k":critic.k})
+
         scores = []
         total_rewards = []
         explored_all = []
@@ -31,12 +49,18 @@ class Graph_A2C():
 
         optimizerA = optim.Adam(actor.parameters(), lr=self.a_lr)
         optimizerC = optim.Adam(critic.parameters(), lr=self.c_lr)
+        decrease_lr = 0.997
+        schedulerA = MultiplicativeLR(optimizerA, lambda iter: decrease_lr)
+        schedulerC = MultiplicativeLR(optimizerC, lambda iter: decrease_lr)
+        wandb.config.update({"lr_factor":decrease_lr})
+
+
         for iter in range(self.n_iters):
             state = env.reset() #env.change_env()
             log_probs = []
             values = []
             rewards = []
-            masks = []
+            dones = []
             # print(state.x[:,0].numpy(),state.x[:,1].numpy())
 
             for i in count():
@@ -54,7 +78,7 @@ class Graph_A2C():
                 log_probs.append(log_prob)
                 values.append(real_value)
                 rewards.append(torch.tensor([reward], dtype=torch.float, device=self.device))
-                masks.append(torch.tensor([1-done], dtype=torch.float, device=self.device))
+                dones.append(torch.tensor([1-done], dtype=torch.float, device=self.device))
 
                 state = next_state
 
@@ -65,7 +89,7 @@ class Graph_A2C():
                     explored_all.append(1)
                     break
 
-                if i == max_tries:
+                if i == max_tries-1:
                     print('Iteration: {}, Steps: {}, Rewards: {}'.format(iter, i+1, torch.sum(torch.cat(rewards)).item()))
                     scores.append(i+1)
                     total_rewards.append(torch.sum(torch.cat(rewards)).item())
@@ -73,8 +97,9 @@ class Graph_A2C():
                     break
 
             next_value = critic(next_state)
-            real_next_value = next_value[mask.bool()].sum(-1)
-            returns = self.compute_returns(real_next_value, rewards, masks)
+            next_mask = next_state.x[:,env.IS_ROBOT]
+            real_next_value = next_value[next_mask.bool()].sum(-1)
+            returns = self.compute_returns(real_next_value, rewards, dones)
 
             log_probs = torch.cat(log_probs)
             returns = torch.cat(returns).detach()
@@ -86,6 +111,14 @@ class Graph_A2C():
             actor_losses.append(actor_loss.item())
             critic_losses.append(critic_loss.item())
 
+            wandb.log({"actor_loss": actor_loss})
+            wandb.log({"critic_loss": critic_loss})
+            wandb.log({"explore_time": i+1})
+            wandb.log({"sum_reward":torch.sum(torch.cat(rewards))})
+
+            wandb.watch(actor)
+            wandb.watch(critic)
+
             optimizerA.zero_grad()
             optimizerC.zero_grad()
             actor_loss.backward()
@@ -93,35 +126,37 @@ class Graph_A2C():
             optimizerA.step()
             optimizerC.step()
 
+            schedulerA.step()
+            schedulerC.step()
+
         print(f"Explored the whole graph {100*sum(explored_all)/len(explored_all)}% of the time")
 
         if plot:
-            plt.plot(scores,label="steps")
-            plt.legend()
-            plt.title("Time until goal state reached over training episodes")
-            plt.show()
+            fig, axes = plt.subplots(2,2)
+            ax0, ax1, ax2, ax3 = axes[0,0], axes[0,1], axes[1,0], axes[1,1]
+            ax0.plot(scores,label="steps")
+            ax0.set_title("Time until goal state reached over training episodes")
 
-            plt.plot(total_rewards, label="sum rewards")
-            plt.legend()
-            plt.title("Rewards over training episodes")
-            plt.show()
+            ax1.plot(total_rewards, label="sum rewards")
+            ax1.set_title("Rewards over training episodes")
 
-            fig, (ax0, ax1) = plt.subplots(1,2)
-            ax0.plot(actor_losses)
-            ax0.set_title("Actor loss")
-            ax1.plot(critic_losses)
-            ax1.set_title("Critic loss")
+            ax2.plot(actor_losses)
+            ax2.set_title("Actor loss")
+
+            ax3.plot(critic_losses)
+            ax3.set_title("Critic loss")
             plt.show()
 
 
     def play(self, env, actor, critic, max_tries=50, v=False):
         state = env.reset() #env.change_env()
+        rewards = []
         print("state:",state.x[:,env.IS_ROBOT].numpy())
         if v:
             print("known:",state.x[:,env.IS_KNOWN_ROBOT].numpy())
             print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
-        for i in range(max_tries):
+        for i in range(max_tries-1):
             dist = actor(state)
             if v:
                 print("dist:")
@@ -133,11 +168,13 @@ class Graph_A2C():
             print("action:",action.numpy())
             next_state, reward, done, _ = env.step(action.cpu().numpy())
             print("reward:",reward)
-            if reward:
-                print("**********")
-                print("")
-            else:
-                print("")
+            rewards.append(reward)
+            if v:
+                if reward:
+                    print("**********")
+                    print("")
+                else:
+                    print("")
 
             state = next_state
             print("state:",state.x[:,env.IS_ROBOT].numpy())
@@ -147,7 +184,8 @@ class Graph_A2C():
             if done:
                 print('Done in {} steps'.format(i+1))
                 break
-
+        wandb.log({"test_steps":i+1})
+        wandb.log({"test_reward":sum(rewards)})
 
 class A2C():
     def __init__(self, device, n_iters, lr, gamma):

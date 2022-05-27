@@ -35,6 +35,7 @@ class LinearAggActor(torch.nn.Module):
     def __init__(self, num_node_features, num_actions):
         super(LinearAggActor, self).__init__()
         self.receptive_field = 1
+        self.k = self.receptive_field
         self.num_node_features = num_node_features
         self.num_actions = num_actions
         self.hidden_units = 16
@@ -66,6 +67,7 @@ class LinearAggCritic(torch.nn.Module):
     def __init__(self, num_node_features):
         super(LinearAggCritic, self).__init__()
         self.receptive_field = 1
+        self.k = self.receptive_field
         self.num_node_features = num_node_features
         self.hidden_units = 16
 
@@ -98,6 +100,7 @@ class SimpleActor(torch.nn.Module):
         self.num_node_features = num_node_features
         self.num_nodes = num_nodes
         self.num_actions = num_actions
+        self.k = None
 
         self.lin1 = torch.nn.Linear(self.num_node_features*self.num_nodes, 128)
         self.lin2 = torch.nn.Linear(128, 256)
@@ -119,6 +122,7 @@ class SimpleCritic(torch.nn.Module):
         super(SimpleCritic, self).__init__()
         self.num_node_features = num_node_features
         self.num_nodes = num_nodes
+        self.k = None
 
         self.lin1 = torch.nn.Linear(self.num_node_features*self.num_nodes, 128)
         self.lin2 = torch.nn.Linear(128, 256)
@@ -161,12 +165,13 @@ class GCNActor(torch.nn.Module):
         self.conv1 = GCNConv(self.input_size, 128, improved=True)
         self.conv2 = GCNConv(128, 128, improved=True)
         self.fully_con1 = torch.nn.Linear(128, self.output_size)
+        self.k = 2
 
     def forward(self, data, prob=0.0, batch=None):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x = self.conv1(x, edge_index, edge_weight=edge_weight)
         x = F.relu(x)
-        for i in range(1):
+        for i in range(self.k-1):
             x = self.conv2(x, edge_index, edge_weight=edge_weight)
             x = F.relu(x)
         x = F.dropout(x, p=prob)
@@ -180,12 +185,13 @@ class GCNCritic(torch.nn.Module):
         self.conv1 = GCNConv(self.input_size, 128, improved=True)
         self.conv2 = GCNConv(128, 128, improved=True)
         self.fully_con1 = torch.nn.Linear(128, 1)
+        self.k = 2
 
     def forward(self, data, prob=0.0, batch=None):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x = self.conv1(x, edge_index, edge_weight=edge_weight)
         x = F.relu(x)
-        for i in range(1):
+        for i in range(self.k-1):
             x = self.conv2(x, edge_index, edge_weight=edge_weight)
             x = F.relu(x)
         x = F.dropout(x, p=prob)
@@ -215,10 +221,11 @@ class GGNNActor(torch.nn.Module):
         self.output_size = num_actions
         self.gconv1 = GatedGraphConv(256, 3)
         self.fully_con1 = torch.nn.Linear(256, self.output_size)
+        self.k = 1
 
     def forward(self, data, prob=0.0, batch=None):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
-        for i in range(1):
+        for i in range(self.k):
             x = self.gconv1(x, edge_index, edge_weight=edge_weight)
             x = F.relu(x)
             x = F.dropout(x, p=prob)
@@ -232,11 +239,12 @@ class GGNNCritic(torch.nn.Module):
         self.input_size = num_node_features
         self.gconv1 = GatedGraphConv(256, 3)
         self.fully_con1 = torch.nn.Linear(256, 1) #100)
+        self.k = 1
 
     def forward(self, data, prob=0.0, batch=None):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
 
-        for i in range(1):
+        for i in range(self.k):
             x = self.gconv1(x, edge_index, edge_weight=edge_weight)
             x = F.relu(x)
             x = F.dropout(x, p=prob)
