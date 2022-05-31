@@ -228,6 +228,34 @@ class GCNCritic(torch.nn.Module):
         x = self.fully_con1(x)
         return x
 
+class GCNA2C(torch.nn.Module):
+    def __init__(self, num_node_features, num_actions):
+        super(GCNA2C, self).__init__()
+        self.input_size = num_node_features
+        self.output_size = num_actions
+        self.conv1 = GCNConv(self.input_size, 128, improved=True)
+        self.conv2 = GCNConv(128, 128, improved=True)
+        self.lin_act = torch.nn.Linear(128, self.output_size)
+        self.lin_crit = torch.nn.Linear(128, 1)
+        self.k = 2
+
+    def forward(self, data, prob=0.0, batch=None):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+        x = self.conv1(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        for i in range(self.k-1):
+            x = self.conv2(x, edge_index, edge_weight=edge_weight)
+            x = F.relu(x)
+        x = F.dropout(x, p=prob)
+
+        # actor
+        a = self.lin_act(x)
+        a = Categorical(F.softmax(a, dim=-1))
+
+        # critic
+        v = self.lin_crit(x)
+        return a, v
+
 class GGNN(torch.nn.Module):
     def __init__(self):
         super(GGNN, self).__init__()

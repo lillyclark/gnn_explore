@@ -8,7 +8,6 @@ from itertools import count
 import matplotlib.pyplot as plt
 
 import wandb
-wandb.init(project="simple-world-explore", entity="lillyclark", config={})
 
 class A2C_Shared():
     def __init__(self, device, n_iters, lr, gamma, run_name="tmp"):
@@ -16,6 +15,9 @@ class A2C_Shared():
         self.gamma = gamma
         self.n_iters = n_iters
         self.lr = lr
+
+        wandb.init(project="simple-world-explore", entity="lillyclark", config={})
+
 
         wandb.config.update({
             "gamma": self.gamma,
@@ -87,6 +89,7 @@ class A2C_Shared():
             returns = torch.cat(returns).detach()
             values = torch.cat(values)
             advantage = returns - values
+            # advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
             entropy = torch.cat(entropies).sum()
 
             actor_loss = -(log_probs * advantage.detach()).mean()
@@ -104,6 +107,7 @@ class A2C_Shared():
 
             optimizer.zero_grad()
             shared_loss.backward()
+            # torch.nn.utils.clip_grad_norm_(a2c_net.parameters(), 0.5)
             optimizer.step()
             scheduler.step()
 
