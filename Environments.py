@@ -33,7 +33,7 @@ class GymGraphEnv(gym.Env):
         self.obs = self.get_obs()
 
     def to_obs(self, state):
-        obs = np.zeros(self.observation_space.shape)
+        obs = torch.zeros(self.observation_space.shape)
         for i in range(self.num_node_features):
             obs[i,:,:] = torch.diag(self.feature_matrix[:,i])
         for idx, (i,j) in enumerate(self.edge_index.T):

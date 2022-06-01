@@ -6,6 +6,9 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
+from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
+
+
 class MyActor(nn.Module):
     def __init__(self, env):
         super().__init__()
@@ -86,11 +89,37 @@ class MyActorCritic(nn.Module):
     def act(self, obs):
         return self.step(obs)[0]
 
+# mpi_fork(8)
+
 env = GymGraphEnv()
-print(env.observation_space.shape)
 env_fn = lambda: GymGraphEnv()
 # ppo(env_fn, actor_critic=<MagicMock spec='str' id='140554322637768'>, ac_kwargs={},
     # seed=0, steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=0.0003,
     # vf_lr=0.001, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=1000,
     # target_kl=0.01, logger_kwargs={}, save_freq=10)
-ppo(env_fn=env_fn, actor_critic=MyActorCritic, ac_kwargs=dict(env=env), epochs=2, steps_per_epoch=500)
+actor, critic = ppo(env_fn=env_fn, run_name="multi-time-step",
+                    actor_critic=MyActorCritic, ac_kwargs=dict(env=env),
+                    epochs=5, steps_per_epoch=100, max_ep_len=100,
+                    pi_lr=0.001, vf_lr=0.01)
+
+print("******DONE TRAINING**********")
+
+# test
+obs = env.reset()
+state = env.to_state(obs)
+print("state:",state.x[:,env.IS_ROBOT].numpy())
+
+for i in range(500):
+    dist, _ = actor(state)
+    action = dist.sample()
+    print("action:",action)
+
+    next_obs, reward, done, _ = env.step(action.cpu().numpy())
+    if reward:
+        print("reward:",reward)
+
+    state = env.to_state(next_obs)
+    print("state:",state.x[:,env.IS_ROBOT].numpy())
+    if done:
+        print('Done in {} steps'.format(i+1))
+        break
