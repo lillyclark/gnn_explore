@@ -107,6 +107,11 @@ class SimpleActor(torch.nn.Module):
         self.lin3 = torch.nn.Linear(256, self.num_actions*self.num_nodes)
 
     def forward(self, data, prob=0.0, batch=None):
+        num_graphs = None
+        try:
+            num_graphs = data.num_graphs
+        except:
+            pass
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x = x.reshape(-1,self.num_node_features*self.num_nodes)
         x = self.lin1(x)
@@ -114,7 +119,10 @@ class SimpleActor(torch.nn.Module):
         x = self.lin2(x)
         x = F.relu(x)
         x = self.lin3(x)
-        x = x.reshape(self.num_nodes,self.num_actions)
+        if num_graphs:
+            x = x.reshape(num_graphs, self.num_nodes,self.num_actions)
+        else:
+            x = x.reshape(self.num_nodes,self.num_actions)
         return Categorical(F.softmax(x, dim=-1))
 
 class SimpleCritic(torch.nn.Module):
@@ -129,6 +137,11 @@ class SimpleCritic(torch.nn.Module):
         self.lin3 = torch.nn.Linear(256, self.num_nodes)
 
     def forward(self, data, prob=0.0, batch=None):
+        num_graphs = None
+        try:
+            num_graphs = data.num_graphs
+        except:
+            pass
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x = x.reshape(-1,self.num_node_features*self.num_nodes)
         x = self.lin1(x)
@@ -136,7 +149,10 @@ class SimpleCritic(torch.nn.Module):
         x = self.lin2(x)
         x = F.relu(x)
         x = self.lin3(x)
-        x = x.reshape(self.num_nodes,-1)
+        if num_graphs:
+            x = x.reshape(num_graphs, self.num_nodes, -1)
+        else:
+            x = x.reshape(self.num_nodes,-1)
         return x
 
 class SimpleA2C(torch.nn.Module):

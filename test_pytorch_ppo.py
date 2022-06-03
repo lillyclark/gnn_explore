@@ -1,11 +1,11 @@
 from spinup import ppo_pytorch as ppo
 from Environments import GymGraphEnv
-from Networks import GCNActor, GCNCritic
+from Networks import GCNActor, GCNCritic, SimpleActor, SimpleCritic
 import torch.nn as nn
 import torch
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-
+import wandb
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
 
 
@@ -14,6 +14,7 @@ class MyActor(nn.Module):
         super().__init__()
         self.env = env
         self.gcn = GCNActor(env.num_node_features, env.num_actions)
+        self.simple = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions)
 
     def forward(self, state, act=None):
         if isinstance(state, torch.Tensor):
@@ -23,7 +24,8 @@ class MyActor(nn.Module):
                 state = self.env.batch_obs_to_batch_state(state)
 
         if isinstance(state, Data):
-            dist = self.gcn(state)
+            # dist = self.gcn(state)
+            dist = self.simple(state)
             log_prob = None
             if act is not None:
                 mask = self.env.get_mask(state)
@@ -33,10 +35,11 @@ class MyActor(nn.Module):
         elif isinstance(state, DataLoader):
             for b in state:
                 batch = b
-            dist = self.gcn(batch)
+            # dist = self.gcn(batch)
+            dist = self.simple(batch)
             log_prob = None
             if act is not None:
-                act = torch.flatten(act)
+                act = act.reshape(batch.num_graphs, -1)
                 mask = self.env.get_mask(state)
                 log_prob = dist.log_prob(act)[mask]
                 log_prob = log_prob.reshape(batch.num_graphs,-1)#.sum(-1).unsqueeze(0)
@@ -48,20 +51,25 @@ class MyCritic(nn.Module):
         super().__init__()
         self.env = env
         self.gcn = GCNCritic(env.num_node_features)
+        self.simple = SimpleCritic(env.num_node_features, env.num_nodes)
 
-    def forward(self, state):
+    def forward(self, state, mask=False):
         if isinstance(state, torch.Tensor):
             try:
                 state = self.env.to_state(state)
             except:
                 state = self.env.batch_obs_to_batch_state(state)
+        m = self.env.get_mask(state)
         if isinstance(state, DataLoader):
             for b in state:
                 batch = b
-            value = self.gcn(batch)
-            value = value.reshape(batch.num_graphs,self.env.num_nodes,1)
+            # value = self.gcn(batch)
+            value = self.simple(batch)
         else:
-            value = self.gcn(state)
+            # value = self.gcn(state)
+            value = self.simple(state)
+        if mask:
+            value = value[m].sum(-1)
         return value
 
 class MyActorCritic(nn.Module):
@@ -89,19 +97,29 @@ class MyActorCritic(nn.Module):
     def act(self, obs):
         return self.step(obs)[0]
 
+run = wandb.init(project="ppo-gnn-explore", entity="lillyclark", config={})
+wandb.run.name = "ppo"+'_'+wandb.run.id
+
 # mpi_fork(8)
 
-env = GymGraphEnv()
-env_fn = lambda: GymGraphEnv()
+env = GymGraphEnv("robot_reward")
+env_fn = lambda: GymGraphEnv("robot_reward")
 # ppo(env_fn, actor_critic=<MagicMock spec='str' id='140554322637768'>, ac_kwargs={},
     # seed=0, steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=0.0003,
     # vf_lr=0.001, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=1000,
     # target_kl=0.01, logger_kwargs={}, save_freq=10)
-actor, critic = ppo(env_fn=env_fn, run_name="multi-time-step",
-                    actor_critic=MyActorCritic, ac_kwargs=dict(env=env),
-                    epochs=5, steps_per_epoch=100, max_ep_len=100,
-                    pi_lr=0.001, vf_lr=0.01)
 
+actor, critic = ppo(env_fn=env_fn,
+                    actor_critic=MyActorCritic,
+                    ac_kwargs=dict(env=env),
+                    epochs=500,
+                    steps_per_epoch=100,
+                    train_v_iters=1,
+                    train_pi_iters=1)
+                    # epochs=100, steps_per_epoch=500, max_ep_len=500,
+                    # pi_lr=0.0001, vf_lr=0.001)
+
+wandb.finish()
 print("******DONE TRAINING**********")
 
 # test
@@ -111,6 +129,7 @@ print("state:",state.x[:,env.IS_ROBOT].numpy())
 
 for i in range(500):
     dist, _ = actor(state)
+    print("dist:",dist.probs)
     action = dist.sample()
     print("action:",action)
 
@@ -118,6 +137,7 @@ for i in range(500):
     if reward:
         print("reward:",reward)
 
+    print("")
     state = env.to_state(next_obs)
     print("state:",state.x[:,env.IS_ROBOT].numpy())
     if done:

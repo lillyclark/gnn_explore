@@ -6,8 +6,10 @@ import gym
 from gym import spaces
 
 class GymGraphEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, reward_name="base_reward", has_master=False):
         self.num_actions = 3 # each node has max 2 edges
+        self.reward_name = reward_name
+        self.has_master = has_master
 
         self.IS_BASE = 0
         self.IS_ROBOT = 1
@@ -16,15 +18,37 @@ class GymGraphEnv(gym.Env):
         self.num_node_features = 4
         self.num_nodes = 8
 
+        if self.has_master:
+            self.IS_MASTER_NODE = 4 # not really part of the env
+            self.num_node_features = 5
+            self.num_nodes = 9
+
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
         self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE], self.feature_matrix[0][self.IS_KNOWN_ROBOT] = True, True, True
         self.feature_matrix[1][self.IS_ROBOT], self.feature_matrix[1][self.IS_KNOWN_ROBOT], self.feature_matrix[1][self.IS_KNOWN_BASE] = True, True, True
+
+        if self.has_master:
+            self.feature_matrix[-1][self.IS_MASTER_NODE], self.feature_matrix[-1][self.IS_KNOWN_ROBOT], self.feature_matrix[-1][self.IS_KNOWN_BASE] = True, True, True
+
 
         right_i = torch.Tensor(list(range(0,self.num_nodes-1)))
         right_j = torch.Tensor(list(range(1,self.num_nodes)))
         left_i = right_j
         left_j = right_i
         self.edge_index = torch.stack([torch.cat([right_i,left_i]),torch.cat([right_j,left_j])]).long()
+
+        if self.has_master:
+            right_i = torch.Tensor(list(range(0,self.num_nodes-2)))
+            right_j = torch.Tensor(list(range(1,self.num_nodes-1)))
+            left_i = right_j
+            left_j = right_i
+            to_master_i = torch.Tensor(list(range(0,self.num_nodes-1)))
+            to_master_j = torch.Tensor([self.num_nodes-1]*(self.num_nodes-1))
+            from_master_i = to_master_j
+            from_master_j = to_master_i
+            self.edge_index = torch.stack([torch.cat([right_i,left_i,to_master_i,from_master_i]),torch.cat([right_j,left_j,to_master_j,from_master_j])]).long()
+
+
         self.edge_attr = torch.ones(self.edge_index.size()[1])
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
 
@@ -55,19 +79,21 @@ class GymGraphEnv(gym.Env):
         return self.to_obs(self.state)
 
     def get_mask(self, state):
-        try:
+        if isinstance(state, Data):
             return state.x[:,self.IS_ROBOT].bool()
-        except AttributeError:
+        elif isinstance(state, DataLoader):
             for b in state:
                 batch = b
-            return batch.x[:,self.IS_ROBOT].bool()
+            return batch.x[:,self.IS_ROBOT].bool().reshape(batch.num_graphs,-1)
         return NotImplementedError
 
     def reset(self):
-        self.__init__()
+        self.__init__(reward_name=self.reward_name, has_master=self.has_master)
         return self.obs
 
     def is_incident(self,n,u,v):
+        if self.has_master:
+            return (n == v and not self.feature_matrix[u][self.IS_MASTER_NODE])
         return (n == v)
 
     def incident_edges(self, node_idx): # list of tuples
@@ -81,6 +107,10 @@ class GymGraphEnv(gym.Env):
 
     def step(self,action):
         new_feature_matrix = torch.zeros(self.feature_matrix.shape)
+
+        # MASTER_NODE STAYS
+        if self.has_master:
+            new_feature_matrix[:,self.IS_MASTER_NODE] = self.feature_matrix[:,self.IS_MASTER_NODE]
 
         # BASE STAYS
         new_feature_matrix[:,self.IS_BASE] = self.feature_matrix[:,self.IS_BASE]
@@ -108,7 +138,12 @@ class GymGraphEnv(gym.Env):
                     new_feature_matrix[:,self.IS_KNOWN_ROBOT] = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT], new_feature_matrix[:,self.IS_KNOWN_BASE])
 
         # COLLECT IMMEDIATE REWARD
-        reward, done = self.get_reward(self.feature_matrix, new_feature_matrix)
+        if self.reward_name == "base_reward":
+            reward, done = self.get_reward(self.feature_matrix, new_feature_matrix)
+        elif self.reward_name == "robot_reward":
+            reward, done = self.get_robot_reward(self.feature_matrix, new_feature_matrix)
+        else:
+            raise NotImplementedError
         self.feature_matrix = new_feature_matrix
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
         self.obs = self.get_obs()
@@ -117,6 +152,11 @@ class GymGraphEnv(gym.Env):
     def get_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
         reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        return reward, done
+
+    def get_robot_reward(self, old_feature_matrix, new_feature_matrix):
+        done = new_feature_matrix[:,self.IS_KNOWN_ROBOT].all().long()
+        reward = 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
         return reward, done
 
 class GraphEnv():
