@@ -14,14 +14,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # mode = ['train','test','write']
 mode = ['train','test']
 
-RUN_NAME = "no_entropy"
+RUN_NAME = "reinforce_base_reward"
 
 a2c_name = 'models/'+RUN_NAME+'_a2c.pt'
 
 env = GraphEnv(reward_name = "base_reward", has_master = False)
 
-# a2c_net = SimpleA2C(env.num_node_features, env.num_nodes, env.num_actions).to(device)
-a2c_net = GCNA2C(env.num_node_features, env.num_actions).to(device)
+a2c_net = SimpleA2C(env.num_node_features, env.num_nodes, env.num_actions).to(device)
+# a2c_net = GCNA2C(env.num_node_features, env.num_actions).to(device)
 A2C = A2C_Shared(device=device, n_iters=1000, lr=0.001, gamma=0.99, run_name=RUN_NAME)
 
 if 'read' in mode:
@@ -29,7 +29,7 @@ if 'read' in mode:
     a2c_net.load_state_dict(n)
 
 if 'train' in mode:
-    A2C.trainIters(env, a2c_net, crit_coeff=0.25, ent_coeff=0.0, max_tries=500, plot=False)
+    A2C.trainIters(env, a2c_net, crit_coeff=0.5, ent_coeff=0.0, max_tries=500, plot=False)
 
 if 'write' in mode:
     torch.save(a2c_net.state_dict(), a2c_name)

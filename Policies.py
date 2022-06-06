@@ -16,7 +16,7 @@ class A2C_Shared():
         self.n_iters = n_iters
         self.lr = lr
 
-        wandb.init(project="simple-world-explore", entity="lillyclark", config={})
+        wandb.init(project="simple-world-2", entity="lillyclark", config={})
 
 
         wandb.config.update({
@@ -26,17 +26,23 @@ class A2C_Shared():
 
         wandb.run.name = run_name+wandb.run.id
 
-    def compute_returns(self,next_value, rewards, dones):
+    def compute_returns(self,next_value, rewards, not_dones, progresses=None):
         R = next_value
         returns = []
         for step in reversed(range(len(rewards))):
-            R = rewards[step] + self. gamma * R * dones[step]
+            R = rewards[step] + self.gamma * R * not_dones[step]
+            returns.insert(0, R)
+        return returns
+
+    def compute_shaped_returns(self,next_value, rewards, not_dones, progresses=None):
+        R = next_value
+        returns = []
+        for step in reversed(range(len(rewards))):
+            R = rewards[step] + self.gamma * R * not_dones[step]
             returns.insert(0, R)
         return returns
 
     def trainIters(self, env, a2c_net, crit_coeff=1, ent_coeff=0, decrease_lr=0.997, max_tries=100, plot=False):
-        decrease_lr = 1
-        print("ignoring dynamic learning rate")
 
         wandb.config.update({"max_tries":max_tries,
             "a2c":a2c_net,
@@ -54,13 +60,15 @@ class A2C_Shared():
             entropies = []
             values = []
             rewards = []
-            dones = []
+            not_dones = []
+            progresses = []
 
             for i in count():
                 dist, value = a2c_net(state)
 
                 action = dist.sample()
                 next_state, reward, done, _ = env.step(action.cpu().numpy())
+                progress = _["progress"]
 
                 # sum up the log_probs/value where there are agents
                 mask = state.x[:,env.IS_ROBOT]
@@ -72,7 +80,8 @@ class A2C_Shared():
                 values.append(real_value)
                 entropies.append(entr)
                 rewards.append(torch.tensor([reward], dtype=torch.float, device=self.device))
-                dones.append(torch.tensor([1-done], dtype=torch.float, device=self.device))
+                not_dones.append(torch.tensor([1-done], dtype=torch.float, device=self.device))
+                progresses.append(torch.tensor([progress], dtype=torch.float, device=self.device))
 
                 state = next_state
 
@@ -83,7 +92,7 @@ class A2C_Shared():
             _, next_value = a2c_net(next_state)
             next_mask = next_state.x[:,env.IS_ROBOT]
             real_next_value = next_value[next_mask.bool()].sum(-1)
-            returns = self.compute_returns(real_next_value, rewards, dones)
+            returns = self.compute_returns(real_next_value, rewards, not_dones, progresses)
 
             log_probs = torch.cat(log_probs)
             returns = torch.cat(returns).detach()
@@ -96,6 +105,9 @@ class A2C_Shared():
             critic_loss = advantage.pow(2).mean()
 
             shared_loss = actor_loss + crit_coeff * critic_loss - ent_coeff * entropy
+
+            # DEBUG : JUST REINFORCE (NO BASELINE)
+            shared_loss = -(log_probs*returns.detach()).mean()
 
             wandb.log({"actor_loss": actor_loss})
             wandb.log({"critic_loss": critic_loss})
