@@ -7,6 +7,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 import wandb
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
+import numpy as np
 
 
 class MyActor(nn.Module):
@@ -98,7 +99,7 @@ class MyActorCritic(nn.Module):
         return self.step(obs)[0]
 
 run = wandb.init(project="ppo-gnn-explore", entity="lillyclark", config={})
-wandb.run.name = "ppo"+'_'+wandb.run.id
+wandb.run.name = "without_normalized_adv"+'_'+wandb.run.id
 
 # mpi_fork(8)
 
@@ -112,12 +113,10 @@ env_fn = lambda: GymGraphEnv("robot_reward")
 actor, critic = ppo(env_fn=env_fn,
                     actor_critic=MyActorCritic,
                     ac_kwargs=dict(env=env),
-                    epochs=500,
-                    steps_per_epoch=100,
-                    train_v_iters=1,
-                    train_pi_iters=1)
-                    # epochs=100, steps_per_epoch=500, max_ep_len=500,
-                    # pi_lr=0.0001, vf_lr=0.001)
+                    epochs=50,
+                    steps_per_epoch=500,
+                    train_v_iters=80,
+                    train_pi_iters=80)
 
 wandb.finish()
 print("******DONE TRAINING**********")
@@ -127,9 +126,12 @@ obs = env.reset()
 state = env.to_state(obs)
 print("state:",state.x[:,env.IS_ROBOT].numpy())
 
-for i in range(500):
+for i in range(100):
+    value = critic(state)
+    print("value:",np.round(value.detach().numpy().T,2))
     dist, _ = actor(state)
-    print("dist:",dist.probs)
+    print("dist:")
+    print(np.round(dist.probs.detach().numpy().T,2))
     action = dist.sample()
     print("action:",action)
 
