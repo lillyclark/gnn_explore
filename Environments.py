@@ -125,26 +125,26 @@ class GraphEnv():
 
     def get_both_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
-        base_reward = 50*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
-        robot_reward = 50*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
+        base_reward = 0.5*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        robot_reward = 0.5*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
         progress = robot_reward > 0
         return base_reward+robot_reward, done, progress
 
     def get_shaped_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
-        base_reward = 100*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
-        robot_reward = 100*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
+        base_reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        robot_reward = 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
         progress = robot_reward > 0
         return base_reward, done, progress
 
     def get_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
-        reward = 100*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
         return reward, done, 0
 
     def get_robot_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_ROBOT].all().long()
-        reward = 100*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
+        reward = 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
         return reward, done, 0
 
 class TestEnv():

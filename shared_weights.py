@@ -14,7 +14,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # mode = ['train','test','write']
 mode = ['train','test']
 
-RUN_NAME = "reinforce_base_reward"
+RUN_NAME = "reinforce_smallbase_reward"
 
 a2c_name = 'models/'+RUN_NAME+'_a2c.pt'
 
