@@ -1,7 +1,7 @@
 import torch
 from Networks import *
 from Environments import TestEnv, GraphEnv
-from Policies import A2C, Graph_A2C
+from Policies import *
 
 np.random.seed(0)
 torch.manual_seed(0)
@@ -9,37 +9,37 @@ torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # mode = ['read','train','test','write']
+# mode = ['test']
 # mode = ['read','test']
-# mode = ['read','train','test']
-# mode = ['train','test','write']
 mode = ['train','test']
+# mode = ['train','test','write']
 
-RUN_NAME = "log_test_results"
+RUN_NAME = "master_GGNN_2_"
 
-a_name = 'models/'+RUN_NAME+'_a.pt'
-c_name = 'models/'+RUN_NAME+'_c.pt'
+wandb.init(project="simple-world-2", entity="lillyclark", config={})
+wandb.run.name = RUN_NAME+wandb.run.id
 
-env = GraphEnv(reward_name = "base_reward", has_master = False)
+model_name = 'models/'+RUN_NAME+'_policy_gradient.pt'
 
-actor = GCNActor(env.num_node_features, env.num_actions).to(device)
-critic = GCNCritic(env.num_node_features).to(device)
+env = GraphEnv(reward_name = "base_reward", has_master = True)
+
 # actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
-# critic = SimpleCritic(env.num_node_features, env.num_nodes).to(device)
+# actor = GCNActor(env.num_node_features, env.num_actions).to(device)
+# actor = LinearAggActor(env.num_node_features, env.num_actions).to(device)
+actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
 
-A2C = Graph_A2C(device=device, n_iters=10, a_lr=0.0001, c_lr=0.001, gamma=0.99, run_name=RUN_NAME)
+agent = PolicyGradient(device=device, n_iters=1, lr=0.001, gamma=0.99)
 
 if 'read' in mode:
-    a = torch.load(a_name)
-    c = torch.load(c_name)
-    actor.load_state_dict(a)
-    critic.load_state_dict(c)
+    n = torch.load(model_name)
+    actor.load_state_dict(n)
 
 if 'train' in mode:
-    A2C.trainIters(env, actor, critic, max_tries=500, plot=False)
+    agent.trainIters(env, actor, max_tries=500, plot=False)
+    wandb.finish()
 
 if 'write' in mode:
-    torch.save(actor.state_dict(), a_name)
-    torch.save(critic.state_dict(), c_name)
+    torch.save(actor.state_dict(), model_name)
 
 if 'test' in mode:
-    A2C.play(env, actor, critic, max_tries=100, v=True)
+    agent.play(env, actor, max_tries=100, v=True)

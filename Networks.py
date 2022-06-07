@@ -34,7 +34,7 @@ class LinearAgg(MessagePassing):
 class LinearAggActor(torch.nn.Module):
     def __init__(self, num_node_features, num_actions):
         super(LinearAggActor, self).__init__()
-        self.receptive_field = 1
+        self.receptive_field = 2
         self.k = self.receptive_field
         self.num_node_features = num_node_features
         self.num_actions = num_actions
@@ -279,7 +279,7 @@ class GGNNActor(torch.nn.Module):
         self.output_size = num_actions
         self.gconv1 = GatedGraphConv(256, 3)
         self.fully_con1 = torch.nn.Linear(256, self.output_size)
-        self.k = 1
+        self.k = 2
 
     def forward(self, data, prob=0.0, batch=None):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
