@@ -5,11 +5,17 @@ from Environments import *
 import torch
 import time
 
+np.random.seed(0)
+torch.manual_seed(0)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 env = GraphEnv(reward_name = "base_reward")
 
 state = env.reset()
 s = state.x
 
+#### CREATE TRANSITION AND REWARD MODELS
 Q = [s]
 visited_index = {}
 t_dict = dict([(x,{}) for x in range(env.num_actions)])
@@ -66,20 +72,6 @@ print(f"{n_states} states were considered exhaustively")
 transitions = np.zeros((env.num_actions, n_states, n_states))
 rewards = np.zeros((env.num_actions, n_states, n_states))
 
-# for a_idx in range(transitions.shape[0]):
-#     transitions[a_idx] = np.identity(n_states)
-#     for u_idx in range(transitions.shape[1]):
-#         tmp_row = np.zeros(transitions.shape[2])
-#         for v_idx in range(transitions.shape[2]):
-#             try:
-#                 tmp_row[v_idx] = t_dict[a_idx][u_idx][v_idx]
-#             except KeyError:
-#                 pass
-#         if np.sum(tmp_row) == 1:
-#             transitions[a_idx][u_idx] = tmp_row
-
-# print(t_dict)
-
 for a in t_dict:
     for u in t_dict[a]:
         for v in t_dict[a][u]:
@@ -93,34 +85,48 @@ for a in r_dict:
 print("transitions:", transitions.shape)
 print("rewards:", rewards.shape)
 
+#### SOLVE FOR MDP POLICY
 discount = 0.99
 start = time.time()
 mdp = mdptoolbox.mdp.PolicyIteration(transitions,
                                     rewards,
                                     discount,
                                     policy0=None,
-                                    max_iter=1000,
+                                    max_iter=100,
                                     eval_type=0)
 mdp.run()
 print(f"Done solving MDP in {time.time()-start} secs")
+policy = mdp.policy
 
-print(mdp.policy)
+def compute_target(state, env, visited_index, policy):
+    s = state.x
+    st = tuple(s.flatten().numpy())
+    s_idx = visited_index[st]
+    action_idx = policy[s_idx]
+    action = torch.ones(env.num_nodes).long()
+    for n in range(env.num_nodes): # TODO
+        if s[n,env.IS_ROBOT]:
+            action[n] = action_idx
+    dist = torch.nn.functional.one_hot(action, num_classes=env.num_actions).float()
+    return dist
 
+def TEST_compute_target(state, env, visited_index, policy):
+    # desired probability of going [left, right, stay] from each node
+    right_dist = torch.Tensor([[0,0,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[1,0,0]])
+    left_dist = torch.Tensor([[0,0,1],[0,0,1],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0]])
+    if state.x[-1][env.IS_KNOWN_ROBOT]:
+        # if the robot has visited the last node
+        return left_dist
+    return right_dist
 
-##### PLAY
+##### TEST MDP BEFORE TRAINING
+print("test MDP policy")
 state = env.reset()
 print("pose:",state.x[:,env.IS_ROBOT].numpy())
 
 for i in range(50):
-    s = state.x
-    st = tuple(s.flatten().numpy())
-    s_idx = visited_index[st]
-    action_idx = mdp.policy[s_idx]
-    action = torch.zeros(env.num_nodes).long()
-    for n in range(env.num_nodes):
-        if s[n,env.IS_ROBOT]:
-            action[n] = action_idx
-
+    dist = compute_target(state, env, visited_index, policy)
+    action = torch.argmax(dist,1)
     print("action:",action)
     next_state, reward, done, _ = env.step(action.cpu().numpy())
     if reward:
@@ -128,7 +134,69 @@ for i in range(50):
         print("***")
 
     state = next_state
-    print("state:",state.x[:,env.IS_ROBOT].numpy())
+    print("pose:",state.x[:,env.IS_ROBOT].numpy())
+    if done:
+        print('Done in {} steps'.format(i+1))
+        break
+
+##### TRAIN
+print("Train NN agent")
+actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
+optimizerA = optim.Adam(actor.parameters(), lr=0.0001)
+
+max_tries = 500
+losses = []
+for iter in range(500):
+    state = env.reset()
+
+    for i in range(max_tries):
+        dist = actor(state)
+        action = dist.sample()
+        next_state, reward, done, _ = env.step(action.cpu().numpy())
+
+        target = compute_target(state, env, visited_index, policy)
+        ce = torch.nn.CrossEntropyLoss()
+
+        mask = state.x[:,env.IS_ROBOT].bool()
+        actor_loss = ce(dist.probs[mask],target[mask])
+        losses.append(actor_loss.item())
+
+        optimizerA.zero_grad()
+        actor_loss.backward()
+        optimizerA.step()
+
+        state = next_state
+
+        if done:
+            print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
+            break
+
+    if not done:
+        print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
+
+
+#### PLAY
+print("")
+print("PLAYING WITH LEARNED POLICY")
+state = env.reset()
+print("pose:", state.x[:,env.IS_ROBOT].numpy())
+
+for i in range(50):
+    dist = actor(state)
+    target = compute_target(state, env, visited_index, policy)
+    print(np.round(dist.probs.detach().numpy().T,2))
+    print(np.round(target.numpy().T,2))
+    action = dist.sample()
+    for n in range(env.num_nodes):
+        if state.x[n,env.IS_ROBOT]:
+            print("action:",action.numpy()[n])
+    next_state, reward, done, _ = env.step(action.cpu().numpy())
+    if reward:
+        print("reward:",reward)
+        print("***")
+    print(" ")
+    state = next_state
+    print("pose:",state.x[:,env.IS_ROBOT].numpy())
     if done:
         print('Done in {} steps'.format(i+1))
         break
