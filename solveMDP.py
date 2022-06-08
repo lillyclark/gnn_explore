@@ -4,6 +4,7 @@ from Networks import *
 from Environments import *
 import torch
 import time
+import wandb
 
 np.random.seed(0)
 torch.manual_seed(0)
@@ -141,12 +142,19 @@ for i in range(50):
 
 ##### TRAIN
 print("Train NN agent")
-actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
-optimizerA = optim.Adam(actor.parameters(), lr=0.0001)
+wandb.init(project="MDP-learn", entity="lillyclark", config={})
+wandb.run.name = "GCNfast_"+wandb.run.id
+
+# actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
+actor = GCNActor(env.num_node_features, env.num_actions).to(device)
+# actor = LinearAggActor(env.num_node_features, env.num_actions).to(device)
+# actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
+
+optimizerA = optim.Adam(actor.parameters(), lr=0.001)
 
 max_tries = 500
 losses = []
-for iter in range(500):
+for iter in range(1000):
     state = env.reset()
 
     for i in range(max_tries):
@@ -159,6 +167,7 @@ for iter in range(500):
 
         mask = state.x[:,env.IS_ROBOT].bool()
         actor_loss = ce(dist.probs[mask],target[mask])
+        wandb.log({"actor_loss": actor_loss})
         losses.append(actor_loss.item())
 
         optimizerA.zero_grad()
@@ -174,6 +183,7 @@ for iter in range(500):
     if not done:
         print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
 
+wandb.finish()
 
 #### PLAY
 print("")
