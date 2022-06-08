@@ -143,7 +143,7 @@ for i in range(50):
 ##### TRAIN
 print("Train NN agent")
 wandb.init(project="MDP-learn", entity="lillyclark", config={})
-wandb.run.name = "GCNfast_"+wandb.run.id
+wandb.run.name = "GCNbatch_fast_"+wandb.run.id
 
 # actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
 actor = GCNActor(env.num_node_features, env.num_actions).to(device)
@@ -153,9 +153,11 @@ actor = GCNActor(env.num_node_features, env.num_actions).to(device)
 optimizerA = optim.Adam(actor.parameters(), lr=0.001)
 
 max_tries = 500
-losses = []
 for iter in range(1000):
     state = env.reset()
+
+    outputs = []
+    targets = []
 
     for i in range(max_tries):
         dist = actor(state)
@@ -166,22 +168,24 @@ for iter in range(1000):
         ce = torch.nn.CrossEntropyLoss()
 
         mask = state.x[:,env.IS_ROBOT].bool()
-        actor_loss = ce(dist.probs[mask],target[mask])
-        wandb.log({"actor_loss": actor_loss})
-        losses.append(actor_loss.item())
-
-        optimizerA.zero_grad()
-        actor_loss.backward()
-        optimizerA.step()
+        outputs.append(dist.probs[mask])
+        targets.append(target[mask])
 
         state = next_state
 
         if done:
-            print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
             break
 
-    if not done:
-        print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
+    outputs = torch.cat(outputs)
+    targets = torch.cat(targets)
+    actor_loss = ce(outputs, targets)
+
+    wandb.log({"actor_loss": actor_loss})
+
+    optimizerA.zero_grad()
+    actor_loss.backward()
+    optimizerA.step()
+    print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
 
 wandb.finish()
 
