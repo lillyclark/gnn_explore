@@ -135,7 +135,7 @@ class A2C_Shared():
         self.n_iters = n_iters
         self.lr = lr
 
-        wandb.init(project="simple-world-2", entity="lillyclark", config={})
+        # wandb.init(project="simple-world-2", entity="lillyclark", config={})
 
 
         wandb.config.update({
@@ -143,7 +143,7 @@ class A2C_Shared():
             "lr": self.lr,
             "n_iters": self.n_iters})
 
-        wandb.run.name = run_name+wandb.run.id
+        # wandb.run.name = run_name+wandb.run.id
 
     def compute_returns(self,next_value, rewards, not_dones, progresses=None):
         R = next_value
