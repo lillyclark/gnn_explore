@@ -12,12 +12,14 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-env = GraphEnv(reward_name = "base_reward")
-policy_name = "8world.p"
-model_name = "8world.pt"
+env = BranchEnv()
+# env = GraphEnv()
+policy_name = "branchworld.p"
+model_name = "branchworld.pt"
 
-# mode = ['read_policy', 'train', 'write', 'test']
-mode = ['read_policy', 'read', 'test']
+mode = ['read_policy', 'train', 'write', 'test']
+# mode = ['read_policy', 'read', 'test']
+# mode = ['write_policy']
 
 if 'write_policy' in mode:
     transitions, rewards, visited_index = get_model(env)
@@ -39,8 +41,8 @@ if 'read' in mode:
 
 if 'train' in mode:
     wandb.init(project="MDP-learn", entity="lillyclark", config={})
-    wandb.run.name = "tmp_"+wandb.run.id
-    train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=10)
+    wandb.run.name = "gcnfast_"+wandb.run.id
+    train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=1000)
     wandb.finish()
 
 if 'write' in mode:

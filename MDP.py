@@ -17,15 +17,13 @@ def get_model(env):
     t_dict = dict([(x,{}) for x in range(env.num_actions)])
     r_dict = dict([(x,{}) for x in range(env.num_actions)])
 
-    count = 0
     start = time.time()
     done = False
-    while Q: # and not done and count < 10000:
-        count += 1
+    while Q:
         u = Q.pop(0)
 
-        if u not in visited_index:
-            tu = tuple(u.flatten().numpy())
+        tu = tuple(u.flatten().numpy())
+        if tu not in visited_index:
             visited_index[tu] = len(visited_index)
             a = torch.zeros(env.num_nodes).long()
 
@@ -50,9 +48,6 @@ def get_model(env):
                         #     print("found a solution")
                         #     # print(a_index, visited_index[tu])
                         #     # break
-
-        else:
-            print("u in visited_index")
 
     # if stopped early
     if Q:
@@ -80,6 +75,7 @@ def get_model(env):
 
     print("transitions:", transitions.shape)
     print("rewards:", rewards.shape)
+
     return transitions, rewards, visited_index
 
 #### SOLVE FOR MDP POLICY
@@ -97,10 +93,12 @@ def solve(transitions, rewards, discount=0.99):
     return policy
 
 def save_optimal_policy(visited_index, policy, filename="policy.p"):
+    print("saving optimal policy")
     policy_dict = {"visited_index":visited_index, "policy":policy}
     pickle.dump(policy_dict, open("policies/"+filename, "wb"))
 
 def load_optimal_policy(filename="policy.p"):
+    print("loading optimal policy")
     policy_dict = pickle.load(open("policies/"+filename, "rb"))
     return policy_dict["visited_index"], policy_dict["policy"]
 
@@ -150,7 +148,7 @@ def train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=1000):
     ##### TRAIN
     print("Train NN agent")
 
-    optimizerA = optim.Adam(actor.parameters(), lr=0.001)
+    optimizerA = optim.Adam(actor.parameters(), lr=0.005)
 
     for iter in range(n_iters):
         state = env.reset()
