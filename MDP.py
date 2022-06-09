@@ -5,6 +5,7 @@ from Environments import *
 import torch
 import time
 import wandb
+import pickle
 
 #### CREATE TRANSITION AND REWARD MODELS
 def get_model(env):
@@ -95,9 +96,13 @@ def solve(transitions, rewards, discount=0.99):
     policy = mdp.policy
     return policy
 
-def save_optimal_policy(visited_index, policy):
-    print(visited_index)
-    print(policy)
+def save_optimal_policy(visited_index, policy, filename="policy.p"):
+    policy_dict = {"visited_index":visited_index, "policy":policy}
+    pickle.dump(policy_dict, open("policies/"+filename, "wb"))
+
+def load_optimal_policy(filename="policy.p"):
+    policy_dict = pickle.load(open("policies/"+filename, "rb"))
+    return policy_dict["visited_index"], policy_dict["policy"]
 
 def compute_target(state, env, visited_index, policy):
     s = state.x
