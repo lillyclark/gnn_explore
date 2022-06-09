@@ -226,7 +226,7 @@ class A2C_Shared():
             shared_loss = actor_loss + crit_coeff * critic_loss - ent_coeff * entropy
 
             # DEBUG : JUST REINFORCE (NO BASELINE)
-            shared_loss = -(log_probs*returns.detach()).mean()
+            # shared_loss = -(log_probs*returns.detach()).mean()
 
             wandb.log({"actor_loss": actor_loss})
             wandb.log({"critic_loss": critic_loss})

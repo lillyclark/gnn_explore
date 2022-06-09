@@ -14,12 +14,12 @@ class GraphEnv():
         self.IS_KNOWN_BASE = 2
         self.IS_KNOWN_ROBOT = 3
         self.num_node_features = 4
-        self.num_nodes = 4
+        self.num_nodes = 8
 
         if self.has_master:
             self.IS_MASTER_NODE = 4 # not really part of the env
             self.num_node_features = 5
-            self.num_nodes = 5
+            self.num_nodes = 9
 
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
         self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE], self.feature_matrix[0][self.IS_KNOWN_ROBOT] = True, True, True
