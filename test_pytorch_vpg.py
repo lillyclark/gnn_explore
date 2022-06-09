@@ -99,20 +99,20 @@ class MyActorCritic(nn.Module):
     def act(self, obs):
         return self.step(obs)[0]
 
-run = wandb.init(project="simple-world-2", entity="lillyclark", config={})
-wandb.run.name = "modvpg_robot"+'_'+wandb.run.id
+run = wandb.init(project="ppo-gnn-explore", entity="lillyclark", config={})
+wandb.run.name = "vpg"+'_'+wandb.run.id
 
 # mpi_fork(8)
 
-env = GymGraphEnv("robot_reward")
-env_fn = lambda: GymGraphEnv("robot_reward")
+env = GymGraphEnv("base_reward")
+env_fn = lambda: GymGraphEnv("base_reward")
 
 actor, critic = vpg(env_fn=env_fn,
                     actor_critic=MyActorCritic,
                     ac_kwargs=dict(env=env),
                     seed=0,
                     steps_per_epoch=500,
-                    epochs=500,
+                    epochs=10,
                     gamma=0.99,
                     pi_lr=0.0003,
                     vf_lr=0.001,

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import wandb
 
 class PPO():
-    def __init__(self, device, env, net, lr, gamma, lam, eps, crit_coeff, ent_coeff, run_name="tmp"):
+    def __init__(self, device, env, net, lr, gamma, lam, eps, crit_coeff, ent_coeff):
         self.device = device
         self.env = env
         self.model = net
@@ -20,8 +20,6 @@ class PPO():
         self.epsilon = eps
         self.crit_coeff = crit_coeff
         self.ent_coeff = ent_coeff
-
-        run = wandb.init(project="ppo-gnn-explore", entity="lillyclark", config={})
 
         wandb.config.update({
             "gamma": self.gamma,
@@ -33,10 +31,6 @@ class PPO():
             "model_k":self.model.k,
             "critic_coeff":self.crit_coeff,
             "entropy_coeff":self.ent_coeff})
-
-        run.name = run_name+run.id
-        print("PROJECT", run.project)
-        print("RUN", run.name)
 
     def compute_rewards_to_go(self, rewards, R=0):
         rtg = []
@@ -122,48 +116,26 @@ class PPO():
             next_m = next_state.x[:,self.env.IS_ROBOT].bool()
             nextV = nextV[next_m].sum(-1)
             rewards_to_go = self.compute_rewards_to_go(rewards,R=nextV)
-            # print("rewards_to_go",rewards_to_go)
 
             V, _, _ = self.evaluate(observations, actions, masks)
-            # print("V",V)
-            assert (V == values).all()
             adv = rewards_to_go - V.detach()
-            # print("adv",adv)
-            # adv = self.apply_normalizer(adv)
-            # print("adv (norm)",adv)
+            adv = self.apply_normalizer(adv)
 
             for _ in range(1):
                 V, curr_log_probs, curr_entropy = self.evaluate(observations, actions, masks)
-                # print("V",V)
-                # print("curr_log_probs",curr_log_probs)
-                # print("curr_entropy",curr_entropy)
-
-                # PPO
-                # ratios = torch.exp(curr_log_probs - log_probs)
-
-                # A2C
-                ratios = log_probs
-
-                # print("ratios",ratios)
+                ratios = torch.exp(curr_log_probs - log_probs)
                 surr1 = ratios * adv
-                # surr2 = torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon) * adv
+                surr2 = torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon) * adv
 
-                # A2C
-                surr2 = ratios * adv
-
-                # print("surr1",surr1)
-                # print("surr2",surr2)
                 actor_loss = (-torch.min(surr1, surr2)).mean()
-                # print("actor_loss",actor_loss)
+                entropy = curr_entropy.sum() # TODO
 
-                entropy = curr_entropy.sum()
-
-                # value_pred_clipped = values + (next_value - values).clamp(-self.epsilon, self.epsilon)
-                # value_losses = (next_value - rewards_to_go) ** 2
-                # value_losses_clipped = (value_pred_clipped - rewards_to_go) ** 2
-                # value_loss = 0.5 * torch.max(value_losses, value_losses_clipped)
-                # critic_loss = value_loss.mean()
-                critic_loss = (rewards_to_go - V.detach()).pow(2).mean()
+                value_pred_clipped = values + (V - values).clamp(-self.epsilon, self.epsilon)
+                value_losses = (V - rewards_to_go) ** 2
+                value_losses_clipped = (value_pred_clipped - rewards_to_go) ** 2
+                value_loss = 0.5 * torch.max(value_losses, value_losses_clipped)
+                critic_loss = value_loss.mean()
+                # critic_loss = (rewards_to_go - V.detach()).pow(2).mean()
 
                 shared_loss = actor_loss + self.crit_coeff * critic_loss - self.ent_coeff * entropy
 
@@ -181,20 +153,18 @@ class PPO():
                 optimizer.step()
                 scheduler.step()
 
-        wandb.finish()
-
-    def play(self, env, a2c_net, max_tries=50, v=False):
-        a2c_net.eval()
+    def play(self, max_tries=50, v=False):
+        self.model.eval()
 
         state = self.env.reset() #env.change_env()
         rewards = []
-        print("state:",state.x[:,env.IS_ROBOT].numpy())
+        print("state:",state.x[:,self.env.IS_ROBOT].numpy())
         if v:
             print("known:",state.x[:,self.env.IS_KNOWN_ROBOT].numpy())
             print("known:",state.x[:,self.env.IS_KNOWN_BASE].numpy())
 
         for i in range(max_tries):
-            dist, value = a2c_net(state)
+            dist, value = self.model(state)
             if v:
                 print("dist:")
                 print(np.round(dist.probs.detach().numpy().T,2))

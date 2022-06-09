@@ -1,26 +1,24 @@
 import torch
-from Networks import *
+from Networks import SimpleA2C
 from Environments import TestEnv, GraphEnv
-from Policies import A2C, Graph_A2C, A2C_Shared
 from PPO import PPO
+import wandb
+import numpy as np
 
 np.random.seed(0)
 torch.manual_seed(0)
 
 device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
-# mode = ['read','train','test','write']
-# mode = ['read','test']
-# mode = ['read','train','test']
-# mode = ['train','test','write']
-mode = ['train']#,'test']
+mode = ['train','test']
 
-RUN_NAME = "debug_critic_loss"
+RUN_NAME = "smaller-world"
+run = wandb.init(project="ppo-gnn-explore", entity="lillyclark", config={})
+run.name = RUN_NAME+run.id
 
 model_name = 'models/'+RUN_NAME+'_ppo.pt'
 
 env = GraphEnv(reward_name = "base_reward", has_master = False)
-# env = FeatureEnv()
 
 net = SimpleA2C(env.num_node_features, env.num_nodes, env.num_actions).to(device)
 # net = GCNA2C(env.num_node_features, env.num_actions).to(device)
@@ -32,8 +30,7 @@ ppo = PPO(device=device,
             lam=0.95,
             eps=0.2,
             crit_coeff=1.0,
-            ent_coeff=0.0,
-            run_name=RUN_NAME)
+            ent_coeff=0.0)
 
 if 'read' in mode:
     n = torch.load(model_name)
@@ -47,3 +44,5 @@ if 'write' in mode:
 
 if 'test' in mode:
     ppo.play(max_tries=100, v=True)
+
+wandb.finish()

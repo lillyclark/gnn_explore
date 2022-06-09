@@ -99,12 +99,12 @@ class MyActorCritic(nn.Module):
         return self.step(obs)[0]
 
 run = wandb.init(project="ppo-gnn-explore", entity="lillyclark", config={})
-wandb.run.name = "without_normalized_adv"+'_'+wandb.run.id
+wandb.run.name = "for_merge"+'_'+wandb.run.id
 
 # mpi_fork(8)
 
-env = GymGraphEnv("robot_reward")
-env_fn = lambda: GymGraphEnv("robot_reward")
+env = GymGraphEnv("base_reward")
+env_fn = lambda: GymGraphEnv("base_reward")
 # ppo(env_fn, actor_critic=<MagicMock spec='str' id='140554322637768'>, ac_kwargs={},
     # seed=0, steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=0.0003,
     # vf_lr=0.001, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=1000,
@@ -113,8 +113,9 @@ env_fn = lambda: GymGraphEnv("robot_reward")
 actor, critic = ppo(env_fn=env_fn,
                     actor_critic=MyActorCritic,
                     ac_kwargs=dict(env=env),
-                    epochs=50,
+                    epochs=10,
                     steps_per_epoch=500,
+                    max_ep_len=500,
                     train_v_iters=80,
                     train_pi_iters=80)
 

@@ -206,12 +206,6 @@ class GraphEnv():
         self.edge_attr = torch.ones(self.edge_index.size()[1])
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
 
-        print("adding some gym API specifics")
-        self.action_space = spaces.Discrete(n=self.num_actions)
-        self.observation_space = spaces.Tuple([spaces.Box(low=0,high=1,shape=self.feature_matrix.shape),
-                                                spaces.Box(low=0,high=self.num_nodes,shape=self.edge_index.shape),
-                                                spaces.Box(low=1,high=1,shape=self.edge_attr.shape)])
-
     def reset(self):
         self.__init__(reward_name=self.reward_name, has_master=self.has_master)
         return self.state
