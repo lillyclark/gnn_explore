@@ -110,24 +110,42 @@ class GraphEnv():
 
         # COLLECT IMMEDIATE REWARD
         if self.reward_name == "base_reward":
-            reward, done = self.get_reward(self.feature_matrix, new_feature_matrix)
+            reward, done, progress = self.get_reward(self.feature_matrix, new_feature_matrix)
         elif self.reward_name == "robot_reward":
-            reward, done = self.get_robot_reward(self.feature_matrix, new_feature_matrix)
+            reward, done, progress = self.get_robot_reward(self.feature_matrix, new_feature_matrix)
+        elif self.reward_name == "shaped_reward":
+            reward, done, progress = self.get_shaped_reward(self.feature_matrix, new_feature_matrix)
+        elif self.reward_name == "both_reward":
+            reward, done, progress = self.get_both_reward(self.feature_matrix, new_feature_matrix)
         else:
             raise NotImplementedError
         self.feature_matrix = new_feature_matrix
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
-        return self.state, reward, done, None
+        return self.state, reward, done, {"progress":progress}
+
+    def get_both_reward(self, old_feature_matrix, new_feature_matrix):
+        done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
+        base_reward = 0.5*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        robot_reward = 0.5*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
+        progress = robot_reward > 0
+        return base_reward+robot_reward, done, progress
+
+    def get_shaped_reward(self, old_feature_matrix, new_feature_matrix):
+        done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
+        base_reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        robot_reward = 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
+        progress = robot_reward > 0
+        return base_reward, done, progress
 
     def get_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
         reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
-        return reward, done
+        return reward, done, 0
 
     def get_robot_reward(self, old_feature_matrix, new_feature_matrix):
         done = new_feature_matrix[:,self.IS_KNOWN_ROBOT].all().long()
-        reward = 100*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
-        return reward, done
+        reward = 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
+        return reward, done, 0
 
 class TestEnv():
     def __init__(self):
