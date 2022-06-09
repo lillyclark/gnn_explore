@@ -53,6 +53,11 @@ class GraphEnv():
         self.__init__(reward_name=self.reward_name, has_master=self.has_master)
         return self.state
 
+    def set_features(self, state_x):
+        self.__init__(reward_name=self.reward_name, has_master=self.has_master)
+        self.feature_matrix = state_x
+        self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
+
     def change_env(self):
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
         self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE], self.feature_matrix[0][self.IS_KNOWN_ROBOT] = True, True, False
