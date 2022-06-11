@@ -3,22 +3,29 @@ import torch
 from torch_geometric.data import Data
 
 class MABranchEnv():
-    def __init__(self):
+    def __init__(self, num_robots=1):
 
         self.num_actions = 4 # each node has max 3 edges
+        self.num_robots = num_robots
+        if self.num_robots > 2:
+            raise NotImplementedError
 
         self.IS_BASE = 0
         self.IS_KNOWN_BASE = 1
 
         self.IS_ROBOT_1 = 2
-        self.IS_ROBOT_2 = 3
         self.IS_KNOWN_ROBOT_1 = 4
-        self.IS_KNOWN_ROBOT_2 = 5
-        self.robots = [self.IS_ROBOT_1, self.IS_ROBOT_2]
-        self.agents = self.robots + [self.IS_BASE]
+        self.robots = [self.IS_ROBOT_1]
         self.agent_knows = {self.IS_BASE: self.IS_KNOWN_BASE,
-                            self.IS_ROBOT_1: self.IS_KNOWN_ROBOT_1,
-                            self.IS_ROBOT_2:self.IS_KNOWN_ROBOT_2}
+                            self.IS_ROBOT_1: self.IS_KNOWN_ROBOT_1}
+
+        if self.num_robots > 1:
+            self.IS_ROBOT_2 = 3
+            self.IS_KNOWN_ROBOT_2 = 5
+            self.robots.append(self.IS_ROBOT_2)
+            self.agent_knows[self.IS_ROBOT_2] = self.IS_KNOWN_ROBOT_2
+
+        self.agents = self.robots + [self.IS_BASE]
 
         self.num_node_features = 6
 
@@ -27,7 +34,8 @@ class MABranchEnv():
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
         self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE] = True, True
         self.feature_matrix[1][self.IS_ROBOT_1], self.feature_matrix[1][self.IS_KNOWN_ROBOT_1] = True, True
-        self.feature_matrix[2][self.IS_ROBOT_2], self.feature_matrix[2][self.IS_KNOWN_ROBOT_2] = True, True
+        if self.num_robots > 1:
+            self.feature_matrix[2][self.IS_ROBOT_2], self.feature_matrix[2][self.IS_KNOWN_ROBOT_2] = True, True
 
 
         right_i = torch.Tensor([0,1,2,2,3,5,4,6])

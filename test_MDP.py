@@ -12,10 +12,10 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-env = MABranchEnv()
+env = MABranchEnv(num_robots=1)
 # env = GraphEnv()
-policy_name = "branchworld.p"
-model_name = "branchworld.pt"
+policy_name = "MAbranchworld.p"
+model_name = "MAbranchworld.pt"
 
 # mode = ['read_policy', 'train', 'write', 'test']
 # mode = ['read_policy', 'read', 'test']
@@ -23,10 +23,10 @@ mode = ['write_policy']
 # mode = []
 
 if 'write_policy' in mode:
-    transitions, rewards, visited_index = get_model(env)
+    transitions, rewards, visited_index, action_index = get_model(env)
     policy = solve(transitions, rewards, discount=0.99)
-    test_optimal_policy(env, visited_index, policy)
-    save_optimal_policy(visited_index, policy, policy_name)
+    test_optimal_policy(env, visited_index, action_index, policy)
+    # save_optimal_policy(visited_index, policy, policy_name)
 
 if 'read_policy' in mode:
     visited_index, policy = load_optimal_policy(policy_name)

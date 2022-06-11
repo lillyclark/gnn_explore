@@ -7,6 +7,7 @@ import time
 import wandb
 import pickle
 from itertools import product
+from scipy.sparse import csr_matrix
 
 #### CREATE TRANSITION AND REWARD MODELS
 def get_model(env):
@@ -29,7 +30,7 @@ def get_model(env):
     done = False
     print("searching state space exhaustively...")
     e_break = 0
-    while Q: # and e_break < 1000:
+    while Q: # and e_break < 100:
         u = Q.pop(0)
         e_break += 1
 
@@ -60,7 +61,8 @@ def get_model(env):
                     assert False
 
                 t_dict[action_combo].setdefault(tu, {})[tv] = 1
-                r_dict[action_combo].setdefault(tu, {})[tv] = reward
+                if reward:
+                    r_dict[action_combo].setdefault(tu, {})[tv] = reward
 
                 if tv not in visited_index:
                     Q.append(v)
@@ -102,25 +104,26 @@ def get_model(env):
     n_states = len(visited_index)
     print(f"{n_states} states were considered exhaustively")
 
-    transitions = np.zeros((len(action_index), n_states, n_states))
-    rewards = np.zeros((len(action_index), n_states, n_states))
+    # n_states = 11776
+    # transitions = np.zeros((len(action_index), n_states, n_states), dtype=np.uint8)
+    # rewards = np.zeros((len(action_index), n_states, n_states), dtype=np.uint8)
+
+    transitions = [csr_matrix((n_states, n_states), dtype=np.int8) for _ in range(len(action_index))]
+    rewards = [csr_matrix((n_states, n_states), dtype=np.int8) for _ in range(len(action_index))]
 
     for a in t_dict:
         a_idx = action_index[a]
         for u in t_dict[a]:
             for v in t_dict[a][u]:
-                transitions[a_idx, visited_index[u], visited_index[v]] = t_dict[a][u][v]
+                transitions[a_idx][visited_index[u],visited_index[v]] = t_dict[a][u][v]
 
     for a in r_dict:
         a_idx = action_index[a]
         for u in r_dict[a]:
             for v in r_dict[a][u]:
-                rewards[a_idx, visited_index[u], visited_index[v]] = r_dict[a][u][v]
+                rewards[a_idx][visited_index[u],visited_index[v]] = r_dict[a][u][v]
 
-    print("transitions:", transitions.shape)
-    print("rewards:", rewards.shape)
-
-    return transitions, rewards, visited_index
+    return transitions, rewards, visited_index, action_index
 
 #### SOLVE FOR MDP POLICY
 def solve(transitions, rewards, discount=0.99):
@@ -146,29 +149,30 @@ def load_optimal_policy(filename="policy.p"):
     policy_dict = pickle.load(open("policies/"+filename, "rb"))
     return policy_dict["visited_index"], policy_dict["policy"]
 
-def compute_target(state, env, visited_index, policy):
+def compute_target(state, env, visited_index, action_index, policy):
+    index_action = {v:k for k,v in action_index.items()}
     s = state.x
     st = tuple(s.flatten().numpy())
     s_idx = visited_index[st]
     action_idx = policy[s_idx]
+    action_combo = index_action[action_idx]
     action = torch.ones(env.num_nodes).long()
-    for n in range(env.num_nodes): # TODO
-        is_robot = env.is_robot(s)
-        if is_robot[n]:
-            action[n] = action_idx
+    for i, robot in enumerate(env.robots):
+        robot_pose = torch.argmax(s[:,robot])
+        action[robot_pose] = action_combo[i]
     dist = torch.nn.functional.one_hot(action, num_classes=env.num_actions).float()
     return dist
 
-def TEST_compute_target(state, env, visited_index, policy):
-    # desired probability of going [left, right, stay] from each node
-    right_dist = torch.Tensor([[0,0,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[1,0,0]])
-    left_dist = torch.Tensor([[0,0,1],[0,0,1],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0]])
-    if state.x[-1][env.IS_KNOWN_ROBOT]:
-        # if the robot has visited the last node
-        return left_dist
-    return right_dist
+# def TEST_compute_target(state, env, visited_index, policy):
+#     # desired probability of going [left, right, stay] from each node
+#     right_dist = torch.Tensor([[0,0,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[1,0,0]])
+#     left_dist = torch.Tensor([[0,0,1],[0,0,1],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0]])
+#     if state.x[-1][env.IS_KNOWN_ROBOT]:
+#         # if the robot has visited the last node
+#         return left_dist
+#     return right_dist
 
-def test_optimal_policy(env, visited_index, policy):
+def test_optimal_policy(env, visited_index, action_index, policy):
     ##### TEST MDP BEFORE TRAINING
     print("test MDP policy")
     state = env.reset()
@@ -176,7 +180,7 @@ def test_optimal_policy(env, visited_index, policy):
     print("pose:",env.is_robot(state.x).numpy())
 
     for i in range(50):
-        dist = compute_target(state, env, visited_index, policy)
+        dist = compute_target(state, env, visited_index, action_index, policy)
         action = torch.argmax(dist,1)
         print("action:",action)
         next_state, reward, done, _ = env.step(action.cpu().numpy())
