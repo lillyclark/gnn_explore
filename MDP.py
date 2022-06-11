@@ -6,48 +6,90 @@ import torch
 import time
 import wandb
 import pickle
+from itertools import product
 
 #### CREATE TRANSITION AND REWARD MODELS
 def get_model(env):
     # return transitions, rewards, visited_index
     state = env.reset()
     s = state.x
+
+    action_index = {}
+    action_generator = product(list(range(env.num_actions)), repeat=len(env.robots))
+    for action_combo in list(action_generator):
+        action_index[action_combo] = len(action_index)
+
     Q = [s]
     visited_index = {}
-    t_dict = dict([(x,{}) for x in range(env.num_actions)])
-    r_dict = dict([(x,{}) for x in range(env.num_actions)])
+
+    t_dict = {action_combo: {} for action_combo in action_index}
+    r_dict = {action_combo: {} for action_combo in action_index}
 
     start = time.time()
     done = False
-    while Q:
+    print("searching state space exhaustively...")
+    e_break = 0
+    while Q: # and e_break < 1000:
         u = Q.pop(0)
+        e_break += 1
 
         tu = tuple(u.flatten().numpy())
         if tu not in visited_index:
             visited_index[tu] = len(visited_index)
             a = torch.zeros(env.num_nodes).long()
 
-            for n in range(env.num_nodes):
-                if u[n,env.IS_ROBOT]: # TODO
-                    for a_index in range(env.num_actions):
-                        a_ = a.detach().clone()
-                        a_[n] = a_index
+            is_robot = env.is_robot(u)
+            robot_nodes = torch.where(is_robot)[0]
 
-                        env.set_features(u)
-                        state, reward, done, _ = env.step(a_.numpy())
-                        v = state.x
-                        tv = tuple(v.flatten().numpy())
+            for action_combo in action_index:
+                a_ = a.detach().clone()
+                a_[robot_nodes] = torch.Tensor(action_combo).long()
 
-                        t_dict[a_index].setdefault(tu, {})[tv] = 1
-                        r_dict[a_index].setdefault(tu, {})[tv] = reward
+                env.set_features(u)
+                state, reward, done, _ = env.step(a_.numpy())
+                v = state.x
+                tv = tuple(v.flatten().numpy())
 
-                        if tv not in visited_index:
-                            Q.append(v)
+                if reward < 0:
+                    print(is_robot)
+                    print(u[:,env.IS_KNOWN_BASE])
+                    print(action_combo)
+                    print(env.is_robot(v))
+                    print(v[:,env.IS_KNOWN_BASE])
+                    print("this earned a NEG reward")
+                    assert False
 
-                        # if done:
-                        #     print("found a solution")
-                        #     # print(a_index, visited_index[tu])
-                        #     # break
+                t_dict[action_combo].setdefault(tu, {})[tv] = 1
+                r_dict[action_combo].setdefault(tu, {})[tv] = reward
+
+                if tv not in visited_index:
+                    Q.append(v)
+
+            # for n in range(env.num_nodes):
+            #     is_robot = env.is_robot(u)
+            #     if is_robot[n]: # TODO
+            #         for a_index in range(env.num_actions):
+            #             a_ = a.detach().clone()
+            #             a_[n] = a_index
+            #
+            #             env.set_features(u)
+            #             state, reward, done, _ = env.step(a_.numpy())
+            #             v = state.x
+            #             tv = tuple(v.flatten().numpy())
+            #
+            #             t_dict[a_index].setdefault(tu, {})[tv] = 1
+            #             r_dict[a_index].setdefault(tu, {})[tv] = reward
+            #
+            #             if tv not in visited_index:
+            #                 Q.append(v)
+
+                # if done:
+                    # print("found a solution")
+                    # print(a_index, visited_index[tu])
+                    # break
+
+        if e_break % 100 == 0:
+            print('.')
 
     # if stopped early
     if Q:
@@ -60,18 +102,20 @@ def get_model(env):
     n_states = len(visited_index)
     print(f"{n_states} states were considered exhaustively")
 
-    transitions = np.zeros((env.num_actions, n_states, n_states))
-    rewards = np.zeros((env.num_actions, n_states, n_states))
+    transitions = np.zeros((len(action_index), n_states, n_states))
+    rewards = np.zeros((len(action_index), n_states, n_states))
 
     for a in t_dict:
+        a_idx = action_index[a]
         for u in t_dict[a]:
             for v in t_dict[a][u]:
-                transitions[a, visited_index[u], visited_index[v]] = t_dict[a][u][v]
+                transitions[a_idx, visited_index[u], visited_index[v]] = t_dict[a][u][v]
 
     for a in r_dict:
+        a_idx = action_index[a]
         for u in r_dict[a]:
             for v in r_dict[a][u]:
-                rewards[a, visited_index[u], visited_index[v]] = r_dict[a][u][v]
+                rewards[a_idx, visited_index[u], visited_index[v]] = r_dict[a][u][v]
 
     print("transitions:", transitions.shape)
     print("rewards:", rewards.shape)
@@ -109,7 +153,8 @@ def compute_target(state, env, visited_index, policy):
     action_idx = policy[s_idx]
     action = torch.ones(env.num_nodes).long()
     for n in range(env.num_nodes): # TODO
-        if s[n,env.IS_ROBOT]:
+        is_robot = env.is_robot(s)
+        if is_robot[n]:
             action[n] = action_idx
     dist = torch.nn.functional.one_hot(action, num_classes=env.num_actions).float()
     return dist
@@ -127,7 +172,8 @@ def test_optimal_policy(env, visited_index, policy):
     ##### TEST MDP BEFORE TRAINING
     print("test MDP policy")
     state = env.reset()
-    print("pose:",state.x[:,env.IS_ROBOT].numpy())
+    # print("pose:",state.x[:,env.IS_ROBOT].numpy())
+    print("pose:",env.is_robot(state.x).numpy())
 
     for i in range(50):
         dist = compute_target(state, env, visited_index, policy)
@@ -139,7 +185,8 @@ def test_optimal_policy(env, visited_index, policy):
             print("***")
 
         state = next_state
-        print("pose:",state.x[:,env.IS_ROBOT].numpy())
+        # print("pose:",state.x[:,env.IS_ROBOT].numpy())
+        print("pose:",env.is_robot(state.x).numpy())
         if done:
             print('Done in {} steps'.format(i+1))
             break
@@ -164,7 +211,8 @@ def train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=1000):
             target = compute_target(state, env, visited_index, policy)
             ce = torch.nn.CrossEntropyLoss()
 
-            mask = state.x[:,env.IS_ROBOT].bool()
+            # mask = state.x[:,env.IS_ROBOT].bool()
+            mask = env.is_robot(state.x).bool()
             outputs.append(dist.probs[mask])
             targets.append(target[mask])
 
@@ -188,7 +236,8 @@ def train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=1000):
 def test_learned_policy(env, actor, visited_index=None, policy=None):
     print("PLAYING WITH LEARNED POLICY")
     state = env.reset()
-    print("pose:", state.x[:,env.IS_ROBOT].numpy())
+    # print("pose:", state.x[:,env.IS_ROBOT].numpy())
+    print("pose:",env.is_robot(state.x).numpy())
 
     for i in range(50):
         dist = actor(state)
@@ -198,7 +247,8 @@ def test_learned_policy(env, actor, visited_index=None, policy=None):
             print(np.round(target.numpy().T,2))
         action = dist.sample()
         for n in range(env.num_nodes):
-            if state.x[n,env.IS_ROBOT]:
+            is_robot = env.is_robot(state.x)
+            if is_robot[n]:
                 print("action:",action.numpy()[n])
         next_state, reward, done, _ = env.step(action.cpu().numpy())
         if reward:
@@ -206,7 +256,8 @@ def test_learned_policy(env, actor, visited_index=None, policy=None):
             print("***")
         print(" ")
         state = next_state
-        print("pose:",state.x[:,env.IS_ROBOT].numpy())
+        # print("pose:",state.x[:,env.IS_ROBOT].numpy())
+        print("pose:",env.is_robot(state.x).numpy())
         if done:
             print('Done in {} steps'.format(i+1))
             break

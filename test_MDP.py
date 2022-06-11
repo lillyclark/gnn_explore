@@ -12,14 +12,15 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-env = BranchEnv()
+env = MABranchEnv()
 # env = GraphEnv()
 policy_name = "branchworld.p"
 model_name = "branchworld.pt"
 
-mode = ['read_policy', 'train', 'write', 'test']
+# mode = ['read_policy', 'train', 'write', 'test']
 # mode = ['read_policy', 'read', 'test']
-# mode = ['write_policy']
+mode = ['write_policy']
+# mode = []
 
 if 'write_policy' in mode:
     transitions, rewards, visited_index = get_model(env)
