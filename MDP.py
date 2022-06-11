@@ -195,11 +195,11 @@ def test_optimal_policy(env, visited_index, action_index, policy):
             print('Done in {} steps'.format(i+1))
             break
 
-def train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=1000):
+def train_agent(env, actor, visited_index, action_index, policy, max_tries=500, n_iters=1000):
     ##### TRAIN
     print("Train NN agent")
 
-    optimizerA = optim.Adam(actor.parameters(), lr=0.005)
+    optimizerA = optim.Adam(actor.parameters(), lr=0.001)
 
     for iter in range(n_iters):
         state = env.reset()
@@ -212,7 +212,7 @@ def train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=1000):
             action = dist.sample()
             next_state, reward, done, _ = env.step(action.cpu().numpy())
 
-            target = compute_target(state, env, visited_index, policy)
+            target = compute_target(state, env, visited_index, action_index, policy)
             ce = torch.nn.CrossEntropyLoss()
 
             # mask = state.x[:,env.IS_ROBOT].bool()
@@ -237,7 +237,7 @@ def train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=1000):
         print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
 
 #### PLAY
-def test_learned_policy(env, actor, visited_index=None, policy=None):
+def test_learned_policy(env, actor, visited_index=None, action_index=None, policy=None):
     print("PLAYING WITH LEARNED POLICY")
     state = env.reset()
     # print("pose:", state.x[:,env.IS_ROBOT].numpy())
@@ -245,8 +245,8 @@ def test_learned_policy(env, actor, visited_index=None, policy=None):
 
     for i in range(50):
         dist = actor(state)
-        if visited_index and policy:
-            target = compute_target(state, env, visited_index, policy)
+        if visited_index and action_index and policy:
+            target = compute_target(state, env, visited_index, action_index, policy)
             print(np.round(dist.probs.detach().numpy().T,2))
             print(np.round(target.numpy().T,2))
         action = dist.sample()

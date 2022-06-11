@@ -15,11 +15,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 env = MABranchEnv(num_robots=2)
 # env = GraphEnv()
 policy_name = "MAbranchworld.p"
-model_name = "MAbranchworld.pt"
+model_name = "MAbranchworld_ggnn.pt"
 
-# mode = ['read_policy', 'train', 'write', 'test']
+mode = ['read_policy', 'train', 'write', 'test']
 # mode = ['read_policy', 'read', 'test']
-mode = ['write_policy']
+# mode = ['write_policy']
 # mode = ['read_policy']
 
 if 'write_policy' in mode:
@@ -32,9 +32,9 @@ if 'read_policy' in mode:
     visited_index, action_index, policy = load_optimal_policy(policy_name)
 
 # actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
-actor = GCNActor(env.num_node_features, env.num_actions).to(device)
+# actor = GCNActor(env.num_node_features, env.num_actions).to(device)
 # actor = LinearAggActor(env.num_node_features, env.num_actions).to(device)
-# actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
+actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
 
 if 'read' in mode:
     n = torch.load("models/"+model_name)
@@ -42,12 +42,12 @@ if 'read' in mode:
 
 if 'train' in mode:
     wandb.init(project="MDP-learn", entity="lillyclark", config={})
-    wandb.run.name = "gcnfast_"+wandb.run.id
-    train_agent(env, actor, visited_index, policy, max_tries=500, n_iters=1000)
+    wandb.run.name = "MAbranch_simple_"+wandb.run.id
+    train_agent(env, actor, visited_index, action_index, policy, max_tries=500, n_iters=1000)
     wandb.finish()
 
 if 'write' in mode:
     torch.save(actor.state_dict(), "models/"+model_name)
 
 if 'test' in mode:
-    test_learned_policy(env, actor, visited_index, policy)
+    test_learned_policy(env, actor, visited_index, action_index, policy)
