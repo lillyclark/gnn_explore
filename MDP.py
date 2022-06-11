@@ -139,15 +139,15 @@ def solve(transitions, rewards, discount=0.99):
     policy = mdp.policy
     return policy
 
-def save_optimal_policy(visited_index, policy, filename="policy.p"):
+def save_optimal_policy(visited_index, action_index, policy, filename="policy.p"):
     print("saving optimal policy")
-    policy_dict = {"visited_index":visited_index, "policy":policy}
+    policy_dict = {"visited_index":visited_index, "policy":policy, "action_index":action_index}
     pickle.dump(policy_dict, open("policies/"+filename, "wb"))
 
 def load_optimal_policy(filename="policy.p"):
     print("loading optimal policy")
     policy_dict = pickle.load(open("policies/"+filename, "rb"))
-    return policy_dict["visited_index"], policy_dict["policy"]
+    return policy_dict["visited_index"], policy_dict["action_index"], policy_dict["policy"]
 
 def compute_target(state, env, visited_index, action_index, policy):
     index_action = {v:k for k,v in action_index.items()}

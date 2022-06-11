@@ -61,11 +61,11 @@ class MABranchEnv():
         return is_robot
 
     def reset(self):
-        self.__init__()
+        self.__init__(num_robots=self.num_robots)
         return self.state
 
     def set_features(self, state_x):
-        self.__init__()
+        self.__init__(num_robots=self.num_robots)
         self.feature_matrix = state_x
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
 
