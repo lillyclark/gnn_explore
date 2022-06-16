@@ -12,15 +12,17 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-env = MABranchEnv(num_robots=2)
-# env = GraphEnv()
-policy_name = "MAbranchworld.p"
-model_name = "MAbranchworld_ggnn.pt"
+#### DEFINE ENVIRONMENT
+num_nodes = 9
+right_i = torch.Tensor([0,0,1,2,3,4,5,6,6])
+right_j = torch.Tensor([1,2,3,4,5,5,6,7,8])
+env = ConfigureEnv(num_robots=2, num_actions=4, num_nodes=num_nodes, right_i=right_i, right_j=right_j)
 
-mode = ['read_policy', 'train', 'write', 'test']
-# mode = ['read_policy', 'read', 'test']
+policy_name = "EnvA.p"
+model_name = "EnvA_gcn.pt"
+
 # mode = ['write_policy']
-# mode = ['read_policy']
+mode = ['read_policy', 'train', 'write', 'test']
 
 if 'write_policy' in mode:
     transitions, rewards, visited_index, action_index = get_model(env)
@@ -32,18 +34,19 @@ if 'read_policy' in mode:
     visited_index, action_index, policy = load_optimal_policy(policy_name)
 
 # actor = SimpleActor(env.num_node_features, env.num_nodes, env.num_actions).to(device)
-# actor = GCNActor(env.num_node_features, env.num_actions).to(device)
+actor = GCNActor(env.num_node_features, env.num_actions).to(device)
 # actor = LinearAggActor(env.num_node_features, env.num_actions).to(device)
-actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
+# actor = GGNNActor(env.num_node_features, env.num_actions).to(device)
 
 if 'read' in mode:
     n = torch.load("models/"+model_name)
     actor.load_state_dict(n)
 
 if 'train' in mode:
-    wandb.init(project="MDP-learn", entity="lillyclark", config={})
-    wandb.run.name = "MAbranch_simple_"+wandb.run.id
-    train_agent(env, actor, visited_index, action_index, policy, max_tries=500, n_iters=1000)
+    wandb.init(project="MDP-medium-world", entity="lillyclark", config={})
+    wandb.run.name = model_name.split(".")[0]+"_"+wandb.run.id
+    optimizer = optim.Adam(actor.parameters(), lr=0.001)
+    train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=1000)
     wandb.finish()
 
 if 'write' in mode:

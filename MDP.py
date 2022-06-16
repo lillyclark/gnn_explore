@@ -51,44 +51,12 @@ def get_model(env):
                 v = state.x
                 tv = tuple(v.flatten().numpy())
 
-                if reward < 0:
-                    print(is_robot)
-                    print(u[:,env.IS_KNOWN_BASE])
-                    print(action_combo)
-                    print(env.is_robot(v))
-                    print(v[:,env.IS_KNOWN_BASE])
-                    print("this earned a NEG reward")
-                    assert False
-
                 t_dict[action_combo].setdefault(tu, {})[tv] = 1
                 if reward:
                     r_dict[action_combo].setdefault(tu, {})[tv] = reward
 
                 if tv not in visited_index:
                     Q.append(v)
-
-            # for n in range(env.num_nodes):
-            #     is_robot = env.is_robot(u)
-            #     if is_robot[n]: # TODO
-            #         for a_index in range(env.num_actions):
-            #             a_ = a.detach().clone()
-            #             a_[n] = a_index
-            #
-            #             env.set_features(u)
-            #             state, reward, done, _ = env.step(a_.numpy())
-            #             v = state.x
-            #             tv = tuple(v.flatten().numpy())
-            #
-            #             t_dict[a_index].setdefault(tu, {})[tv] = 1
-            #             r_dict[a_index].setdefault(tu, {})[tv] = reward
-            #
-            #             if tv not in visited_index:
-            #                 Q.append(v)
-
-                # if done:
-                    # print("found a solution")
-                    # print(a_index, visited_index[tu])
-                    # break
 
         if e_break % 100 == 0:
             print('.')
@@ -178,11 +146,12 @@ def test_optimal_policy(env, visited_index, action_index, policy):
     state = env.reset()
     # print("pose:",state.x[:,env.IS_ROBOT].numpy())
     print("pose:",env.is_robot(state.x).numpy())
+    print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
     for i in range(50):
         dist = compute_target(state, env, visited_index, action_index, policy)
         action = torch.argmax(dist,1)
-        print("action:",action)
+        # print("action:",action)
         next_state, reward, done, _ = env.step(action.cpu().numpy())
         if reward:
             print("reward:",reward)
@@ -191,15 +160,14 @@ def test_optimal_policy(env, visited_index, action_index, policy):
         state = next_state
         # print("pose:",state.x[:,env.IS_ROBOT].numpy())
         print("pose:",env.is_robot(state.x).numpy())
+        print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
         if done:
             print('Done in {} steps'.format(i+1))
             break
 
-def train_agent(env, actor, visited_index, action_index, policy, max_tries=500, n_iters=1000):
+def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=1000):
     ##### TRAIN
     print("Train NN agent")
-
-    optimizerA = optim.Adam(actor.parameters(), lr=0.001)
 
     for iter in range(n_iters):
         state = env.reset()
@@ -233,7 +201,7 @@ def train_agent(env, actor, visited_index, action_index, policy, max_tries=500, 
 
         optimizerA.zero_grad()
         actor_loss.backward()
-        optimizerA.step()
+        optimizer.step()
         print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
 
 #### PLAY
@@ -242,6 +210,7 @@ def test_learned_policy(env, actor, visited_index=None, action_index=None, polic
     state = env.reset()
     # print("pose:", state.x[:,env.IS_ROBOT].numpy())
     print("pose:",env.is_robot(state.x).numpy())
+    print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
     for i in range(50):
         dist = actor(state)
@@ -262,6 +231,7 @@ def test_learned_policy(env, actor, visited_index=None, action_index=None, polic
         state = next_state
         # print("pose:",state.x[:,env.IS_ROBOT].numpy())
         print("pose:",env.is_robot(state.x).numpy())
+        print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
         if done:
             print('Done in {} steps'.format(i+1))
             break

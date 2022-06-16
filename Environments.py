@@ -2,6 +2,156 @@ import numpy as np
 import torch
 from torch_geometric.data import Data
 
+class ConfigureEnv():
+    def __init__(self, num_robots=1, num_actions=4, num_nodes=8, right_i=None, right_j=None):
+
+        self.num_actions = num_actions # each node has max 3 edges
+        self.num_robots = num_robots
+        if self.num_robots > 2:
+            raise NotImplementedError
+
+        self.IS_BASE = 0
+        self.IS_KNOWN_BASE = 1
+        self.IS_ROBOT_1 = 2
+        self.IS_KNOWN_ROBOT_1 = 3
+        self.robots = [self.IS_ROBOT_1]
+        self.agent_knows = {self.IS_BASE: self.IS_KNOWN_BASE,
+                            self.IS_ROBOT_1: self.IS_KNOWN_ROBOT_1}
+        self.num_node_features = 4
+
+        if self.num_robots > 1:
+            self.IS_ROBOT_2 = 4
+            self.IS_KNOWN_ROBOT_2 = 5
+            self.robots.append(self.IS_ROBOT_2)
+            self.agent_knows[self.IS_ROBOT_2] = self.IS_KNOWN_ROBOT_2
+            self.num_node_features = 6
+
+        self.agents = self.robots + [self.IS_BASE]
+
+        self.num_nodes = num_nodes
+
+        self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
+        self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE] = True, True
+        self.feature_matrix[1][self.IS_ROBOT_1], self.feature_matrix[1][self.IS_KNOWN_ROBOT_1] = True, True
+        if self.num_robots > 1:
+            self.feature_matrix[2][self.IS_ROBOT_2], self.feature_matrix[2][self.IS_KNOWN_ROBOT_2] = True, True
+
+        if right_i is None or right_j is None:
+            right_i = torch.Tensor([0,1,2,2,3,5,4,6])
+            right_j = torch.Tensor([1,2,3,5,4,6,7,7])
+            print("default edges:",right_i,right_j)
+        left_i = right_j
+        left_j = right_i
+        self.edge_index = torch.stack([torch.cat([right_i,left_i]),torch.cat([right_j,left_j])]).long()
+        self.edge_attr = torch.ones(self.edge_index.size()[1])
+        self.feature_matrix = self.share_k(self.feature_matrix, k=len(self.robots))
+        self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
+
+    def is_robot(self, feature_matrix):
+        is_robot = torch.zeros(self.num_nodes)
+        for r in self.robots:
+            is_robot = torch.max(is_robot, feature_matrix[:,r])
+        return is_robot
+
+    def reset(self):
+        self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
+        self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE] = True, True
+        self.feature_matrix[1][self.IS_ROBOT_1], self.feature_matrix[1][self.IS_KNOWN_ROBOT_1] = True, True
+        if self.num_robots > 1:
+            self.feature_matrix[2][self.IS_ROBOT_2], self.feature_matrix[2][self.IS_KNOWN_ROBOT_2] = True, True
+        self.feature_matrix = self.share_k(self.feature_matrix, k=len(self.robots))
+        self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
+        return self.state
+
+    def set_features(self, state_x):
+        self.feature_matrix = state_x
+        self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
+
+    def is_incident(self,n,u,v):
+        return (n == v)
+
+    def incident_edges(self, node_idx): # list of tuples
+        incident_edges = []
+        for u, v in zip(self.edge_index[0],self.edge_index[1]):
+            if self.is_incident(node_idx, u, v):
+                incident_edges.append((u,v))
+        for extra_edge in range(self.num_actions - len(incident_edges)):
+            incident_edges.append((node_idx,node_idx))
+        return incident_edges
+
+    def share(self, feature_matrix):
+        for n in range(self.num_nodes):
+            for x in self.agents:
+                if feature_matrix[n][x]: # is robot
+                    for y in self.agents:
+                        if (torch.argmax(feature_matrix[:,y]), n) in self.incident_edges(n):
+                            feature_matrix[:,y] = torch.max(feature_matrix[:,x], feature_matrix[:,y])
+                            feature_matrix[:,x] = torch.max(feature_matrix[:,x], feature_matrix[:,y])
+        return feature_matrix
+
+    def share_k(self, feature_matrix, k=1):
+        new_feature_matrix = torch.zeros(feature_matrix.shape)
+        for static in self.agents:
+            new_feature_matrix[:,static] = feature_matrix[:,static]
+        for hop in range(k):
+            for agent1 in self.agents:
+                known = feature_matrix[:,self.agent_knows[agent1]]
+                for agent2 in self.agents:
+                    if agent1 == agent2:
+                        continue
+                    agent1_pose = torch.argmax(feature_matrix[:,agent1])
+                    agent2_pose = torch.argmax(feature_matrix[:,agent2])
+                    if (agent2_pose, agent1_pose) in self.incident_edges(agent1_pose):
+                        known = torch.max(known, feature_matrix[:,self.agent_knows[agent2]])
+                new_feature_matrix[:,self.agent_knows[agent1]] = known
+            feature_matrix = new_feature_matrix
+        return new_feature_matrix
+
+    def robot_at(self, feature_matrix, n):
+        for r in self.robots:
+            if feature_matrix[n][r]:
+                return True, r
+        return False, None
+
+    def step(self,action):
+        new_feature_matrix = torch.zeros(self.feature_matrix.shape)
+
+        # BASE STAYS
+        new_feature_matrix[:,self.IS_BASE] = self.feature_matrix[:,self.IS_BASE]
+
+        # WHAT WAS KNOWN IS STILL KNOWN
+        for static in self.agents:
+            new_feature_matrix[:,self.agent_knows[static]] = self.feature_matrix[:,self.agent_knows[static]]
+
+        # MOVE ROBOT & EXPLORE
+        for n in range(self.num_nodes):
+            is_robot, r = self.robot_at(self.feature_matrix, n)
+            if is_robot:
+                u, v = self.incident_edges(n)[action[n]] # v = n
+                also_robot, _ = self.robot_at(self.feature_matrix, u)
+                already_robot, _ = self.robot_at(new_feature_matrix, u)
+                is_base = new_feature_matrix[u][self.IS_BASE].bool().item()
+                if not also_robot and not already_robot and not is_base:
+                    new_feature_matrix[u][r] = True
+                    new_feature_matrix[u][self.agent_knows[r]] = True
+                else:
+                    # print("didn't move",n,"to",u,"because",also_robot,already_robot,is_base)
+                    new_feature_matrix[n][r] = True # wanted to move but couldn't
+
+        # SHARE (1 hop per time)
+        new_feature_matrix = self.share_k(new_feature_matrix)
+
+        # COLLECT IMMEDIATE REWARD
+        reward, done, progress = self.get_reward(self.feature_matrix, new_feature_matrix)
+        self.feature_matrix = new_feature_matrix
+        self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
+        return self.state, reward, done, {"progress":progress}
+
+    def get_reward(self, old_feature_matrix, new_feature_matrix):
+        done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
+        reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        return reward, done, 0
+
 class MABranchEnv():
     def __init__(self, num_robots=1):
 
