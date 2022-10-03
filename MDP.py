@@ -199,7 +199,7 @@ def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_
 
         wandb.log({"actor_loss": actor_loss})
 
-        optimizerA.zero_grad()
+        optimizer.zero_grad()
         actor_loss.backward()
         optimizer.step()
         print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
