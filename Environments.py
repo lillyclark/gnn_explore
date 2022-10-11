@@ -1,10 +1,19 @@
+from typing import List
+from matplotlib import pyplot as plt
 import numpy as np
 import torch
 from torch_geometric.data import Data
+import networkx as nx
 
 class ConfigureEnv():
-    def __init__(self, num_robots=1, num_actions=4, num_nodes=8, right_i=None, right_j=None):
-
+    def __init__(self, num_robots=1, num_actions=4, num_nodes=8, right_i=None, right_j=None, graph=None, start_pos: List[int]=[]):
+        self.base_startpos = 0
+        self.robot1_startpos = 1
+        self.robot2_startpos = 2
+        if start_pos:
+            self.base_startpos = start_pos[0]
+            self.robot1_startpos = start_pos[1]    
+            self.robot2_startpos = start_pos[2]
         self.num_actions = num_actions # each node has max 3 edges
         self.num_robots = num_robots
         if self.num_robots > 2:
@@ -29,12 +38,14 @@ class ConfigureEnv():
         self.agents = self.robots + [self.IS_BASE]
 
         self.num_nodes = num_nodes
-
+        # TODO: make robot 1 and robot2 pose inputs to the function
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
-        self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE] = True, True
-        self.feature_matrix[1][self.IS_ROBOT_1], self.feature_matrix[1][self.IS_KNOWN_ROBOT_1] = True, True
+        self.feature_matrix[self.base_startpos][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE] = True, True
+        # Here
+        self.feature_matrix[self.robot1_startpos][self.IS_ROBOT_1], self.feature_matrix[1][self.IS_KNOWN_ROBOT_1] = True, True
         if self.num_robots > 1:
-            self.feature_matrix[2][self.IS_ROBOT_2], self.feature_matrix[2][self.IS_KNOWN_ROBOT_2] = True, True
+            # Here
+            self.feature_matrix[self.robot2_startpos][self.IS_ROBOT_2], self.feature_matrix[2][self.IS_KNOWN_ROBOT_2] = True, True
 
         if right_i is None or right_j is None:
             right_i = torch.Tensor([0,1,2,2,3,5,4,6])
@@ -44,8 +55,13 @@ class ConfigureEnv():
         left_j = right_i
         self.edge_index = torch.stack([torch.cat([right_i,left_i]),torch.cat([right_j,left_j])]).long()
         self.edge_attr = torch.ones(self.edge_index.size()[1])
+        print("*****Feature matrix*****")
+        print(self.feature_matrix)
         self.feature_matrix = self.share_k(self.feature_matrix, k=len(self.robots))
+        print("*****Feature matrix*****")
+        print(self.feature_matrix)
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
+        self.graph = graph
 
     def is_robot(self, feature_matrix):
         is_robot = torch.zeros(self.num_nodes)
@@ -55,10 +71,10 @@ class ConfigureEnv():
 
     def reset(self):
         self.feature_matrix = torch.zeros((self.num_nodes, self.num_node_features))
-        self.feature_matrix[0][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE] = True, True
-        self.feature_matrix[1][self.IS_ROBOT_1], self.feature_matrix[1][self.IS_KNOWN_ROBOT_1] = True, True
+        self.feature_matrix[self.base_startpos][self.IS_BASE], self.feature_matrix[0][self.IS_KNOWN_BASE] = True, True
+        self.feature_matrix[self.robot1_startpos][self.IS_ROBOT_1], self.feature_matrix[1][self.IS_KNOWN_ROBOT_1] = True, True
         if self.num_robots > 1:
-            self.feature_matrix[2][self.IS_ROBOT_2], self.feature_matrix[2][self.IS_KNOWN_ROBOT_2] = True, True
+            self.feature_matrix[self.robot2_startpos][self.IS_ROBOT_2], self.feature_matrix[2][self.IS_KNOWN_ROBOT_2] = True, True
         self.feature_matrix = self.share_k(self.feature_matrix, k=len(self.robots))
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
         return self.state
@@ -151,6 +167,43 @@ class ConfigureEnv():
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
         reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
         return reward, done, 0
+
+    def update_graph(self, graph):
+        if graph:
+            pose = self.is_robot(self.state.x).numpy()
+            known = self.state.x[:,self.IS_KNOWN_BASE].numpy()
+            color_map = ['white'] * len(pose)
+            # colors = ['red', ]
+            print("Robot 1: ", self.IS_ROBOT_1)
+            print("Robot 2:", self.IS_ROBOT_2)
+            print("", flush=True)
+            # print(len(color_map))
+            for idx, _ in enumerate(pose):
+                if pose[idx] == 1:
+                    color_map[idx] = 'red'
+                elif known[idx] == 1:
+                    color_map[idx] = 'blue'
+            # nx.set_edge_attributes(graph, values = 1, name = 'weight')
+            nx.draw_spectral(graph, node_color=color_map, with_labels=True)
+            return graph
+
+    def render(self, graph):        
+        if graph:
+            pose = self.is_robot(self.state.x).numpy()
+            known = self.state.x[:,self.IS_KNOWN_BASE].numpy()
+            color_map = ['white'] * len(pose)
+            print(len(color_map))
+            for idx, found in enumerate(pose):
+                if found == 1:
+                    color_map[idx] = 'red'
+                elif known[idx] == 1:
+                    color_map[idx] = 'blue'
+            plt.clf()
+            # nx.set_edge_attributes(graph, values = 1.0, name = 'weight')
+            nx.draw_spring(graph, node_color=color_map, with_labels=True)
+            plt.show()
+            
+
 
 class MABranchEnv():
     def __init__(self, num_robots=1):
@@ -576,45 +629,45 @@ class GraphEnv():
         reward = 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT] - old_feature_matrix[:,self.IS_KNOWN_ROBOT]).sum().item()
         return reward, done, 0
 
-class TestEnv():
-    def __init__(self):
-        self.num_actions = 3 # left, stay, right
-        self.state = np.array([1,0,0,0,1,0,0,0])
-        self.goal_state = np.array([0,0,0,1,0,0,0,1])
+# class TestEnv():
+#     def __init__(self):
+#         self.num_actions = 3 # left, stay, right
+#         self.state = np.array([1,0,0,0,1,0,0,0])
+#         self.goal_state = np.array([0,0,0,1,0,0,0,1])
 
-    def reset(self):
-        self.state = np.array([1,0,0,0,1,0,0,0])
-        return self.state
+#     def reset(self):
+#         self.state = np.array([1,0,0,0,1,0,0,0])
+#         return self.state
 
-    def step(self,action):
-        # print("STATE",self.state)
-        new_state = self.state.copy()
-        # print("new_state",new_state)
-        for cell in range(len(self.state)):
-            if self.state[cell]: # has robot
-                # print("robot at",cell)
-                if action[cell] == 0: # go left
-                    # print("goes left")
-                    new_pos = max(cell-1,0)
-                elif action[cell] == 1: # stay
-                    new_pos = cell
-                elif action[cell] == 2: # go right
-                    # print("goes right")
-                    new_pos = min(cell+1,len(self.state)-1)
-                else:
-                    raise ValueError()
-                if not new_state[new_pos]: # collision avoidance
-                    # print("moves")
-                    new_state[cell] = 0
-                    new_state[new_pos] = 1
-                # print("new_state",new_state)
-        assert sum(self.state) == 2
-        self.state = new_state
-        reward, done = self.get_reward()
-        return self.state, reward, done, None
+#     def step(self,action):
+#         # print("STATE",self.state)
+#         new_state = self.state.copy()
+#         # print("new_state",new_state)
+#         for cell in range(len(self.state)):
+#             if self.state[cell]: # has robot
+#                 # print("robot at",cell)
+#                 if action[cell] == 0: # go left
+#                     # print("goes left")
+#                     new_pos = max(cell-1,0)
+#                 elif action[cell] == 1: # stay
+#                     new_pos = cell
+#                 elif action[cell] == 2: # go right
+#                     # print("goes right")
+#                     new_pos = min(cell+1,len(self.state)-1)
+#                 else:
+#                     raise ValueError()
+#                 if not new_state[new_pos]: # collision avoidance
+#                     # print("moves")
+#                     new_state[cell] = 0
+#                     new_state[new_pos] = 1
+#                 # print("new_state",new_state)
+#         assert sum(self.state) == 2
+#         self.state = new_state
+#         reward, done = self.get_reward()
+#         return self.state, reward, done, None
 
-    def get_reward(self):
-        reward, done = 0, False
-        if (self.state == self.goal_state).all():
-            reward, done = 10, True
-        return reward, done
+#     def get_reward(self):
+#         reward, done = 0, False
+#         if (self.state == self.goal_state).all():
+#             reward, done = 10, True
+#         return reward, done

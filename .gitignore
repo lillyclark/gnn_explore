@@ -4,3 +4,4 @@ models/
 policies/
 *.png
 wandb/
+ignore.py
