@@ -36,9 +36,9 @@ policy_name = envTest.policy_name
 model_name = envTest.model_name
 model_name = 'EnvA_test.pt'
 
-# mode = ['write_policy']
+mode = ['write_policy']
 # mode = ['read_policy', 'train', 'write', 'test']
-mode = ['read_policy', 'read', 'test']
+# mode = ['read_policy', 'read', 'test']
 # mode = ['read_policy']
 
 if 'write_policy' in mode:
@@ -64,7 +64,7 @@ if 'train' in mode:
     wandb.init(project="MDP-medium-world", entity="dmdsouza", config={})
     wandb.run.name = model_name.split(".")[0]+"_"+wandb.run.id
     optimizer = optim.Adam(actor.parameters(), lr=0.001)
-    train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=1000)
+    train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=150)
     wandb.finish()
 
 if 'write' in mode:

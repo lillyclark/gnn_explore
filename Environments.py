@@ -34,6 +34,8 @@ class ConfigureEnv():
             self.robots.append(self.IS_ROBOT_2)
             self.agent_knows[self.IS_ROBOT_2] = self.IS_KNOWN_ROBOT_2
             self.num_node_features = 6
+        
+        # Adding a feature to check if the 
 
         self.agents = self.robots + [self.IS_BASE]
 
@@ -164,14 +166,20 @@ class ConfigureEnv():
         return self.state, reward, done, {"progress":progress}
 
     def get_reward(self, old_feature_matrix, new_feature_matrix):
-        done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
-        reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        done = torch.logical_or(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1], new_feature_matrix[:,self.IS_KNOWN_ROBOT_2]).all().long()
+        new_known_by_robots = torch.logical_or(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1], new_feature_matrix[:,self.IS_KNOWN_ROBOT_2])
+        old_known_by_robots = torch.logical_or(old_feature_matrix[:,self.IS_KNOWN_ROBOT_1], old_feature_matrix[:,self.IS_KNOWN_ROBOT_2])
+        reward = 0
+        # reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        reward = torch.logical_xor(new_known_by_robots, old_known_by_robots).sum().item()
+        # reward += 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1] - old_feature_matrix[:,self.IS_KNOWN_ROBOT_1]).sum().item()
+        # reward += 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT_2] - old_feature_matrix[:,self.IS_KNOWN_ROBOT_2]).sum().item() 
         return reward, done, 0
 
     def update_graph(self, graph):
         if graph:
             pose = self.is_robot(self.state.x).numpy()
-            known = self.state.x[:,self.IS_KNOWN_BASE].numpy()
+            known = np.logical_or(self.state.x[:,self.IS_KNOWN_ROBOT_1].numpy(), self.state.x[:,self.IS_KNOWN_ROBOT_2].numpy())
             color_map = ['white'] * len(pose)
             # colors = ['red', ]
             print("Robot 1: ", self.IS_ROBOT_1)

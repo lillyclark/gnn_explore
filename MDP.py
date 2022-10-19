@@ -1,3 +1,4 @@
+from tabnanny import check
 from timeit import repeat
 import matplotlib
 from matplotlib.animation import FuncAnimation
@@ -33,6 +34,7 @@ def get_model(env):
     done = False
     print("searching state space exhaustively...")
     e_break = 0
+    first = False
     while Q: # and e_break < 100:
         u = Q.pop(0)
         e_break += 1
@@ -44,6 +46,11 @@ def get_model(env):
 
             is_robot = env.is_robot(u)
             robot_nodes = torch.where(is_robot)[0]
+            chk = False
+            if robot_nodes[0] == 3 and robot_nodes[1] == 4 and not first:
+                chk = True
+                first = True
+                # print(robot_nodes)
 
             for action_combo in action_index:
                 a_ = a.detach().clone()
@@ -53,6 +60,13 @@ def get_model(env):
                 state, reward, done, _ = env.step(a_.numpy())
                 v = state.x
                 tv = tuple(v.flatten().numpy())
+                if chk:
+                    new_robot1_loc = v[:,env.IS_ROBOT_1].numpy()
+                    new_robot2_loc = v[:,env.IS_ROBOT_2].numpy()
+                    if new_robot1_loc[1] and new_robot2_loc[5]:
+                        print("1,5 Reward: ",reward)
+                    elif new_robot1_loc[3] and new_robot2_loc[5]:
+                        print("3,5 Reward:", reward)
 
                 t_dict[action_combo].setdefault(tu, {})[tv] = 1
                 if reward:
@@ -175,10 +189,10 @@ def test_optimal_policy(env, visited_index, action_index, policy, graph):
             ani.event_source.stop()
             time.sleep(5)
             plt.close()
-    ani = FuncAnimation(fig, update, frames=50, interval=1000, repeat=False)
+    ani = FuncAnimation(fig, update, frames=50, interval=3000, repeat=False)
     plt.show()
 
-def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=1000):
+def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=100):
     ##### TRAIN
     print("Train NN agent")
 
@@ -269,7 +283,7 @@ def test_learned_policy(env, actor, visited_index=None, action_index=None, polic
             ani.event_source.stop()
             time.sleep(5)
             plt.close()
-    ani = FuncAnimation(fig, update, frames=50, interval=1000, repeat=False)
+    ani = FuncAnimation(fig, update, frames=50, interval=3000, repeat=False)
     plt.show()
 
 
