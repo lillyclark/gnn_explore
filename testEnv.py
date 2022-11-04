@@ -54,6 +54,33 @@ class testEnv():
             self.right_j = torch.Tensor([1,2,3,4,5,6,7,8])
             self.num_nodes = 9
             self.num_actions = 3
+        if env_option == "C":
+            envName += env_option
+            self.envName = envName
+            self.policy_name = envName + self.policy_name
+            self.model_name = envName + self.model_name
+            self.right_i = torch.Tensor([0,0,1,2,3,4,4,5,6])
+            self.right_j = torch.Tensor([1,2,3,3,4,5,6,7,8])
+            self.num_nodes = 9
+            self.num_actions = 4
+        if env_option == "D":
+            envName += env_option
+            self.envName = envName
+            self.policy_name = envName + self.policy_name
+            self.model_name = envName + self.model_name
+            self.right_i = torch.Tensor([0,0,1,2,3,4,4,5,6,7,8])
+            self.right_j = torch.Tensor([1,2,3,3,4,5,6,7,8,9,10])
+            self.num_nodes = 11
+            self.num_actions = 4
+        if env_option == "E":
+            envName += env_option
+            self.envName = envName
+            self.policy_name = envName + self.policy_name
+            self.model_name = envName + self.model_name
+            self.right_i = torch.Tensor([0,0,1,2,3,4,5,6,6,7,8])
+            self.right_j = torch.Tensor([1,2,3,4,5,5,6,7,8,9,10])
+            self.num_nodes = 11
+            self.num_actions = 4
     
     def showGraph(self, G=None):
         if self.envName == "":

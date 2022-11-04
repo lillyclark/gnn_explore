@@ -64,6 +64,9 @@ class ConfigureEnv():
         print(self.feature_matrix)
         self.state = Data(x=self.feature_matrix, edge_index=self.edge_index, edge_attr=self.edge_attr)
         self.graph = graph
+        # calculates the shortest path length of the all pairs in the graph 
+        self.spl = dict(nx.all_pairs_shortest_path_length(self.graph))
+        self.frontier_nodes = torch.zeros(self.num_nodes, dtype=torch.bool)
 
     def is_robot(self, feature_matrix):
         is_robot = torch.zeros(self.num_nodes)
@@ -127,6 +130,7 @@ class ConfigureEnv():
 
     def robot_at(self, feature_matrix, n):
         for r in self.robots:
+            
             if feature_matrix[n][r]:
                 return True, r
         return False, None
@@ -146,6 +150,9 @@ class ConfigureEnv():
             is_robot, r = self.robot_at(self.feature_matrix, n)
             if is_robot:
                 u, v = self.incident_edges(n)[action[n]] # v = n
+                # if(u == 8 or v == 8):
+                # print(f'Move from to {u} to {v}', flush=True)
+
                 also_robot, _ = self.robot_at(self.feature_matrix, u)
                 already_robot, _ = self.robot_at(new_feature_matrix, u)
                 is_base = new_feature_matrix[u][self.IS_BASE].bool().item()
@@ -167,11 +174,31 @@ class ConfigureEnv():
 
     def get_reward(self, old_feature_matrix, new_feature_matrix):
         done = torch.logical_or(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1], new_feature_matrix[:,self.IS_KNOWN_ROBOT_2]).all().long()
+        # if done:
+        #     print(f'in the rewards done state: {torch.logical_or(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1], new_feature_matrix[:,self.IS_KNOWN_ROBOT_2])}')
         new_known_by_robots = torch.logical_or(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1], new_feature_matrix[:,self.IS_KNOWN_ROBOT_2])
         old_known_by_robots = torch.logical_or(old_feature_matrix[:,self.IS_KNOWN_ROBOT_1], old_feature_matrix[:,self.IS_KNOWN_ROBOT_2])
+        
         reward = 0
         # reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
+        # self.frontier_nodes = torch.logical_not(old_known_by_robots)
         reward = torch.logical_xor(new_known_by_robots, old_known_by_robots).sum().item()
+        # if done:
+        #     reward = 1000
+        # IS_ROBOT1_t = new_feature_matrix[:,self.IS_ROBOT_1]
+        # IS_ROBOT2_t = new_feature_matrix[:,self.IS_ROBOT_2]
+        # robot1_index = int((IS_ROBOT1_t == 1).nonzero(as_tuple=True)[0])
+        # robot2_index = int((IS_ROBOT2_t == 1).nonzero(as_tuple=True)[0])
+        # print(f'robot1 current loc: {robot1_index}')
+        # print(f'robot2 current loc: {robot2_index}')
+        # print(self.spl[self.base_startpos][robot1_index])
+        # print(self.spl[self.base_startpos][robot2_index])
+        # giving reward if the node is further from the base and is a frontier node
+        # if self.frontier_nodes[robot1_index]:
+        #     reward += self.spl[self.base_startpos][robot1_index] * 1.0
+        # if self.frontier_nodes[robot2_index]:
+        #     reward += self.spl[self.base_startpos][robot2_index] * 1.0
+        
         # reward += 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1] - old_feature_matrix[:,self.IS_KNOWN_ROBOT_1]).sum().item()
         # reward += 1*(new_feature_matrix[:,self.IS_KNOWN_ROBOT_2] - old_feature_matrix[:,self.IS_KNOWN_ROBOT_2]).sum().item() 
         return reward, done, 0
@@ -184,6 +211,8 @@ class ConfigureEnv():
             # colors = ['red', ]
             print("Robot 1: ", self.IS_ROBOT_1)
             print("Robot 2:", self.IS_ROBOT_2)
+            edges = [line for line in nx.generate_edgelist(graph, data=False)]
+            print(f'{edges}')
             print("", flush=True)
             # print(len(color_map))
             for idx, _ in enumerate(pose):
@@ -192,7 +221,11 @@ class ConfigureEnv():
                 elif known[idx] == 1:
                     color_map[idx] = 'blue'
             # nx.set_edge_attributes(graph, values = 1, name = 'weight')
-            nx.draw_spectral(graph, node_color=color_map, with_labels=True)
+            random_pos = nx.random_layout(graph, seed=25)
+            pos = nx.spring_layout(graph, pos=random_pos)
+            nx.draw(graph, pos, with_labels=True, node_color=color_map)
+            # random_pos = nx.random_layout(graph, seed=42)
+            # nx.draw_networkx(graph, with_labels=True, pos=random_pos)#, node_color=color_map, with_labels=True)
             return graph
 
     def render(self, graph):        

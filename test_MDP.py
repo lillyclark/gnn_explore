@@ -20,7 +20,8 @@ envTest = testEnv.testEnv()
 # envTest.createEnv("B")
 # print(chr(ord('B')+1))
 # exit()
-envTest.setEnv("A")
+# envTest.setEnv("C")
+envTest.setEnv("E")
 envTest.showGraph()
 graph = envTest.getGraph()
 plt.clf()
@@ -30,13 +31,14 @@ plt.show()
 num_nodes = envTest.num_nodes
 right_i = envTest.right_i
 right_j = envTest.right_j
-env = ConfigureEnv(num_robots=envTest.num_robots, num_actions=envTest.num_actions, num_nodes=num_nodes, right_i=right_i, right_j=right_j)
+env = ConfigureEnv(num_robots=envTest.num_robots, num_actions=envTest.num_actions, num_nodes=num_nodes, right_i=right_i, right_j=right_j, graph=graph)
 
 policy_name = envTest.policy_name
 model_name = envTest.model_name
-model_name = 'EnvA_test.pt'
+# model_name = 'EnvA_test.pt'
 
 mode = ['write_policy']
+# mode = ['test']
 # mode = ['read_policy', 'train', 'write', 'test']
 # mode = ['read_policy', 'read', 'test']
 # mode = ['read_policy']
@@ -64,11 +66,12 @@ if 'train' in mode:
     wandb.init(project="MDP-medium-world", entity="dmdsouza", config={})
     wandb.run.name = model_name.split(".")[0]+"_"+wandb.run.id
     optimizer = optim.Adam(actor.parameters(), lr=0.001)
-    train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=150)
+    train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=1000)
     wandb.finish()
 
 if 'write' in mode:
     torch.save(actor.state_dict(), "models/"+model_name)
 
 if 'test' in mode:
-    test_learned_policy(env, actor, visited_index, action_index, policy, graph)
+    visited_index, action_index, policy = load_optimal_policy(policy_name)
+    test_optimal_policy(env, visited_index, action_index, policy, graph)

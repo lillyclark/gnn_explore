@@ -46,11 +46,11 @@ def get_model(env):
 
             is_robot = env.is_robot(u)
             robot_nodes = torch.where(is_robot)[0]
-            chk = False
-            if robot_nodes[0] == 3 and robot_nodes[1] == 4 and not first:
-                chk = True
-                first = True
-                # print(robot_nodes)
+            # chk = False
+            # if robot_nodes[0] == 3 and robot_nodes[1] == 4 and not first:
+            #     chk = True
+            #     first = True
+            #     # print(robot_nodes)
 
             for action_combo in action_index:
                 a_ = a.detach().clone()
@@ -60,13 +60,13 @@ def get_model(env):
                 state, reward, done, _ = env.step(a_.numpy())
                 v = state.x
                 tv = tuple(v.flatten().numpy())
-                if chk:
-                    new_robot1_loc = v[:,env.IS_ROBOT_1].numpy()
-                    new_robot2_loc = v[:,env.IS_ROBOT_2].numpy()
-                    if new_robot1_loc[1] and new_robot2_loc[5]:
-                        print("1,5 Reward: ",reward)
-                    elif new_robot1_loc[3] and new_robot2_loc[5]:
-                        print("3,5 Reward:", reward)
+                # if chk:
+                #     new_robot1_loc = v[:,env.IS_ROBOT_1].numpy()
+                #     new_robot2_loc = v[:,env.IS_ROBOT_2].numpy()
+                #     if new_robot1_loc[1] and new_robot2_loc[5]:
+                #         print("1,5 Reward: ",reward)
+                #     elif new_robot1_loc[3] and new_robot2_loc[5]:
+                #         print("3,5 Reward:", reward)
 
                 t_dict[action_combo].setdefault(tu, {})[tv] = 1
                 if reward:
@@ -107,6 +107,7 @@ def get_model(env):
         for u in r_dict[a]:
             for v in r_dict[a][u]:
                 rewards[a_idx][visited_index[u],visited_index[v]] = r_dict[a][u][v]
+    
 
     return transitions, rewards, visited_index, action_index
 
@@ -165,6 +166,9 @@ def test_optimal_policy(env, visited_index, action_index, policy, graph):
     print("pose:",env.is_robot(state.x).numpy())
     print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
+    # env.render(graph)
+
+
     fig = plt.gcf()
     plt.clf()
     def update(i):
@@ -182,7 +186,10 @@ def test_optimal_policy(env, visited_index, action_index, policy, graph):
         state = next_state
         # print("pose:",state.x[:,env.IS_ROBOT].numpy())
         print("pose:",env.is_robot(state.x).numpy())
-        print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
+        known_by_robots = torch.logical_or(state.x[:,env.IS_KNOWN_ROBOT_1], state.x[:,env.IS_KNOWN_ROBOT_2])
+        
+        print("known:",known_by_robots)
+        plt.clf()
         graph = env.update_graph(graph)
         if done:
             print('Done in {} steps'.format(i+1))
