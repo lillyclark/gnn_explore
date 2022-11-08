@@ -79,6 +79,9 @@ def get_model(env):
     transitions = [csr_matrix((n_states, n_states), dtype=np.int8) for _ in range(len(action_index))]
     rewards = [csr_matrix((n_states, n_states), dtype=np.int8) for _ in range(len(action_index))]
 
+    print("transitions shape:", transitions.shape)
+    print("rewards shape:", rewards.shape)
+
     for a in t_dict:
         a_idx = action_index[a]
         for u in t_dict[a]:
@@ -90,6 +93,11 @@ def get_model(env):
         for u in r_dict[a]:
             for v in r_dict[a][u]:
                 rewards[a_idx][visited_index[u],visited_index[v]] = r_dict[a][u][v]
+
+    if transitions.sum(axis=1) != np.ones(transitions.shape[0]):
+        print("stochastic error?")
+        print(transitions.sum(axis=1))
+        print("at index", torch.argmax(transitions.sum(axis=1)))
 
     return transitions, rewards, visited_index, action_index
 

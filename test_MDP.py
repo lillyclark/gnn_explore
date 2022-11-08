@@ -13,9 +13,9 @@ torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 #### DEFINE ENVIRONMENT
-num_nodes = 9
-right_i = torch.Tensor([0,0,1,2,3,4,4,5,6])
-right_j = torch.Tensor([1,2,3,3,4,5,6,7,8])
+num_nodes = 11
+right_i = torch.Tensor([0,0,1,2,3,4,5,6,6,7,8])
+right_j = torch.Tensor([1,2,3,4,5,5,6,7,8,9,10])
 env = ConfigureEnv(num_robots=2, num_actions=4, num_nodes=num_nodes, right_i=right_i, right_j=right_j)
 
 policy_name = "Env_daniel.p"
@@ -23,8 +23,8 @@ model_name = "Env_daniel.pt"
 # model_name = "EnvA_simple.pt"
 
 
-# mode = ['write_policy']
-mode = ['read_policy']
+mode = ['write_policy']
+# mode = ['read_policy']
 # mode = ['read_policy', 'train', 'write', 'test']
 # mode = ['read_policy', 'read', 'train', 'write', 'test']
 # mode = ['read_policy', 'train', 'test']
