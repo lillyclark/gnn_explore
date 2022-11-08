@@ -148,6 +148,12 @@ class ConfigureEnv():
         return self.state, reward, done, {"progress":progress}
 
     def get_reward(self, old_feature_matrix, new_feature_matrix):
+        done = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1], new_feature_matrix[:,self.IS_KNOWN_ROBOT_2]).all().long()
+        new_known_by_robots = torch.max(new_feature_matrix[:,self.IS_KNOWN_ROBOT_1], new_feature_matrix[:,self.IS_KNOWN_ROBOT_2])
+        old_known_by_robots = torch.max(old_feature_matrix[:,self.IS_KNOWN_ROBOT_1], old_feature_matrix[:,self.IS_KNOWN_ROBOT_2])
+        reward = (new_known_by_robots - old_known_by_robots).sum().item()
+        return reward, done, 0
+
         done = new_feature_matrix[:,self.IS_KNOWN_BASE].all().long()
         reward = 1*(new_feature_matrix[:,self.IS_KNOWN_BASE] - old_feature_matrix[:,self.IS_KNOWN_BASE]).sum().item()
         return reward, done, 0
