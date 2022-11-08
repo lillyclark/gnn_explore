@@ -96,6 +96,9 @@ def get_model(env):
     transitions = [csr_matrix((n_states, n_states), dtype=np.int8) for _ in range(len(action_index))]
     rewards = [csr_matrix((n_states, n_states), dtype=np.int8) for _ in range(len(action_index))]
 
+    print("transitions shape:", transitions.shape)
+    print("rewards shape:", rewards.shape)
+
     for a in t_dict:
         a_idx = action_index[a]
         for u in t_dict[a]:
@@ -108,6 +111,11 @@ def get_model(env):
             for v in r_dict[a][u]:
                 rewards[a_idx][visited_index[u],visited_index[v]] = r_dict[a][u][v]
     
+
+    if transitions.sum(axis=1) != np.ones(transitions.shape[0]):
+        print("stochastic error?")
+        print(transitions.sum(axis=1))
+        print("at index", torch.argmax(transitions.sum(axis=1)))
 
     return transitions, rewards, visited_index, action_index
 
@@ -131,21 +139,21 @@ def save_optimal_policy(visited_index, action_index, policy, filename="policy.p"
     pickle.dump(policy_dict, open("policies/"+filename, "wb"))
 
 def load_optimal_policy(filename="policy.p"):
-    print("loading optimal policy")
+    print("loading optimal policy", filename)
     policy_dict = pickle.load(open("policies/"+filename, "rb"))
-    return policy_dict["visited_index"], policy_dict["action_index"], policy_dict["policy"]
+    index_action = {v:k for k,v in policy_dict["action_index"].items()}
+    return policy_dict["visited_index"], index_action, policy_dict["policy"]
 
-def compute_target(state, env, visited_index, action_index, policy):
-    index_action = {v:k for k,v in action_index.items()}
+def compute_target(state, env, visited_index, index_action, policy):
     s = state.x
     st = tuple(s.flatten().numpy())
     s_idx = visited_index[st]
     action_idx = policy[s_idx]
     action_combo = index_action[action_idx]
-    action = torch.ones(env.num_nodes).long()
-    for i, robot in enumerate(env.robots):
-        robot_pose = torch.argmax(s[:,robot])
-        action[robot_pose] = action_combo[i]
+    action = torch.zeros(env.num_nodes).long()
+    is_robot = env.is_robot(s)
+    robot_nodes = torch.where(is_robot)[0]
+    action[robot_nodes] = torch.Tensor(action_combo).long()
     dist = torch.nn.functional.one_hot(action, num_classes=env.num_actions).float()
     return dist
 
@@ -162,9 +170,6 @@ def test_optimal_policy(env, visited_index, action_index, policy, graph):
     ##### TEST MDP BEFORE TRAINING
     print("test MDP policy")
     state = env.reset()
-    # print("pose:",state.x[:,env.IS_ROBOT].numpy())
-    print("pose:",env.is_robot(state.x).numpy())
-    print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
     # env.render(graph)
 
@@ -202,12 +207,19 @@ def test_optimal_policy(env, visited_index, action_index, policy, graph):
 def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=100):
     ##### TRAIN
     print("Train NN agent")
+    ce = torch.nn.CrossEntropyLoss()
 
     for iter in range(n_iters):
+        
         state = env.reset()
 
         outputs = []
         targets = []
+
+            # for i in range(max_tries):
+            #     dist = actor(state)
+            #     action = dist.sample()
+            #     next_state, reward, done, _ = env.step(action.cpu().numpy())
 
         for i in range(max_tries):
             dist = actor(state)
@@ -226,11 +238,13 @@ def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_
             if done:
                 break
 
-        outputs = torch.cat(outputs)
-        targets = torch.cat(targets)
-        actor_loss = ce(outputs, targets)
+            if dist.entropy().sum().item() < 0.01:
+                print('Reached a close-to-zero entropy solution...')
+                return
 
-        wandb.log({"actor_loss": actor_loss})
+            outputs = torch.cat(outputs)
+            targets = torch.cat(targets)
+            actor_loss = ce(outputs, targets)
 
         optimizer.zero_grad()
         actor_loss.backward()
@@ -268,15 +282,11 @@ def test_learned_policy(env, actor, visited_index=None, action_index=None, polic
             # print(np.round(dist.probs.detach().numpy().T,2))
             # print(np.round(target.numpy().T,2))
         action = dist.sample()
-        for n in range(env.num_nodes):
-            is_robot = env.is_robot(state.x)
-            if is_robot[n]:
-                print("action:",action.numpy()[n])
+        print("action:", action.numpy()[env.is_robot(state.x).bool()])
         next_state, reward, done, _ = env.step(action.cpu().numpy())
         if reward:
             print("reward:",reward)
             print("***")
-        print(" ")
         state = next_state
         # print("pose:",state.x[:,env.IS_ROBOT].numpy())
         # Updating the graph        
