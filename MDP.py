@@ -113,21 +113,21 @@ def save_optimal_policy(visited_index, action_index, policy, filename="policy.p"
     pickle.dump(policy_dict, open("policies/"+filename, "wb"))
 
 def load_optimal_policy(filename="policy.p"):
-    print("loading optimal policy")
+    print("loading optimal policy", filename)
     policy_dict = pickle.load(open("policies/"+filename, "rb"))
-    return policy_dict["visited_index"], policy_dict["action_index"], policy_dict["policy"]
+    index_action = {v:k for k,v in policy_dict["action_index"].items()}
+    return policy_dict["visited_index"], index_action, policy_dict["policy"]
 
-def compute_target(state, env, visited_index, action_index, policy):
-    index_action = {v:k for k,v in action_index.items()}
+def compute_target(state, env, visited_index, index_action, policy):
     s = state.x
     st = tuple(s.flatten().numpy())
     s_idx = visited_index[st]
     action_idx = policy[s_idx]
     action_combo = index_action[action_idx]
-    action = torch.ones(env.num_nodes).long()
-    for i, robot in enumerate(env.robots):
-        robot_pose = torch.argmax(s[:,robot])
-        action[robot_pose] = action_combo[i]
+    action = torch.zeros(env.num_nodes).long()
+    is_robot = env.is_robot(s)
+    robot_nodes = torch.where(is_robot)[0]
+    action[robot_nodes] = torch.Tensor(action_combo).long()
     dist = torch.nn.functional.one_hot(action, num_classes=env.num_actions).float()
     return dist
 
@@ -140,14 +140,14 @@ def compute_target(state, env, visited_index, action_index, policy):
 #         return left_dist
 #     return right_dist
 
-def test_optimal_policy(env, visited_index, action_index, policy):
+def test_optimal_policy(env, visited_index, index_action, policy):
     ##### TEST MDP BEFORE TRAINING
     print("test MDP policy")
     state = env.reset()
 
     for i in range(50):
         print("pose:",torch.argmax(state.x[:,env.IS_ROBOT_1]),torch.argmax(state.x[:,env.IS_ROBOT_2]))
-        dist = compute_target(state, env, visited_index, action_index, policy)
+        dist = compute_target(state, env, visited_index, index_action, policy)
         action = torch.argmax(dist,1)
         # print("action:",action)
         next_state, reward, done, _ = env.step(action.cpu().numpy())
@@ -160,7 +160,7 @@ def test_optimal_policy(env, visited_index, action_index, policy):
             print('Done in {} steps'.format(i+1))
             break
 
-def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=1000, wandb_log=False):
+def train_agent(env, actor, optimizer, visited_index, index_action, policy, max_tries=500, n_iters=1000, wandb_log=False):
     ##### TRAIN
     print("Train NN agent")
     ce = torch.nn.CrossEntropyLoss()
@@ -177,7 +177,7 @@ def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_
                 action = dist.sample()
                 next_state, reward, done, _ = env.step(action.cpu().numpy())
 
-                target = compute_target(state, env, visited_index, action_index, policy)
+                target = compute_target(state, env, visited_index, index_action, policy)
 
                 # TODO check mask
                 mask = env.is_robot(state.x).bool()
@@ -212,15 +212,15 @@ def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_
             return
 
 #### PLAY
-def test_learned_policy(env, actor, visited_index=None, action_index=None, policy=None):
+def test_learned_policy(env, actor, visited_index=None, index_action=None, policy=None):
     print("PLAYING WITH LEARNED POLICY")
     state = env.reset()
 
     for i in range(50):
         print("pose:",env.is_robot(state.x).numpy())
         dist = actor(state)
-        if visited_index and action_index and policy:
-            target = compute_target(state, env, visited_index, action_index, policy)
+        if visited_index and index_action and policy:
+            target = compute_target(state, env, visited_index, index_action, policy)
         action = dist.sample()
         print("action:", action.numpy()[env.is_robot(state.x).bool()])
         next_state, reward, done, _ = env.step(action.cpu().numpy())
