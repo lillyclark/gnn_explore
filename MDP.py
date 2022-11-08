@@ -144,11 +144,9 @@ def test_optimal_policy(env, visited_index, action_index, policy):
     ##### TEST MDP BEFORE TRAINING
     print("test MDP policy")
     state = env.reset()
-    # print("pose:",state.x[:,env.IS_ROBOT].numpy())
-    print("pose:",env.is_robot(state.x).numpy())
-    print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
     for i in range(50):
+        print("pose:",torch.argmax(state.x[:,env.IS_ROBOT_1]),torch.argmax(state.x[:,env.IS_ROBOT_2]))
         dist = compute_target(state, env, visited_index, action_index, policy)
         action = torch.argmax(dist,1)
         # print("action:",action)
@@ -158,80 +156,78 @@ def test_optimal_policy(env, visited_index, action_index, policy):
             print("***")
 
         state = next_state
-        # print("pose:",state.x[:,env.IS_ROBOT].numpy())
-        print("pose:",env.is_robot(state.x).numpy())
-        print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
         if done:
             print('Done in {} steps'.format(i+1))
             break
 
-def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=1000):
+def train_agent(env, actor, optimizer, visited_index, action_index, policy, max_tries=500, n_iters=1000, wandb_log=False):
     ##### TRAIN
     print("Train NN agent")
+    ce = torch.nn.CrossEntropyLoss()
 
     for iter in range(n_iters):
-        state = env.reset()
+        try:
+            state = env.reset()
 
-        outputs = []
-        targets = []
+            outputs = []
+            targets = []
 
-        for i in range(max_tries):
-            dist = actor(state)
-            action = dist.sample()
-            next_state, reward, done, _ = env.step(action.cpu().numpy())
+            for i in range(max_tries):
+                dist = actor(state)
+                action = dist.sample()
+                next_state, reward, done, _ = env.step(action.cpu().numpy())
 
-            target = compute_target(state, env, visited_index, action_index, policy)
-            ce = torch.nn.CrossEntropyLoss()
+                target = compute_target(state, env, visited_index, action_index, policy)
 
-            # mask = state.x[:,env.IS_ROBOT].bool()
-            mask = env.is_robot(state.x).bool()
-            outputs.append(dist.probs[mask])
-            targets.append(target[mask])
+                # TODO check mask
+                mask = env.is_robot(state.x).bool()
+                outputs.append(dist.probs[mask])
+                targets.append(target[mask])
 
-            state = next_state
+                # outputs.append(dist.probs)
+                # targets.append(target)
 
-            if done:
-                break
+                state = next_state
 
-        outputs = torch.cat(outputs)
-        targets = torch.cat(targets)
-        actor_loss = ce(outputs, targets)
+                if done:
+                    break
 
-        wandb.log({"actor_loss": actor_loss})
+                if dist.entropy().sum().item() < 0.01:
+                    print('Reached a close-to-zero entropy solution...')
+                    return
 
-        optimizerA.zero_grad()
-        actor_loss.backward()
-        optimizer.step()
-        print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
+            outputs = torch.cat(outputs)
+            targets = torch.cat(targets)
+            actor_loss = ce(outputs, targets)
+
+            if wandb_log:
+                wandb.log({"actor_loss": actor_loss})
+
+            optimizer.zero_grad()
+            actor_loss.backward()
+            optimizer.step()
+            print(f'Iter: {iter}, Steps: {i+1}, Loss: {actor_loss.item()}')
+        except KeyboardInterrupt:
+            print('Keyboard interrupt')
+            return
 
 #### PLAY
 def test_learned_policy(env, actor, visited_index=None, action_index=None, policy=None):
     print("PLAYING WITH LEARNED POLICY")
     state = env.reset()
-    # print("pose:", state.x[:,env.IS_ROBOT].numpy())
-    print("pose:",env.is_robot(state.x).numpy())
-    print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
 
     for i in range(50):
+        print("pose:",env.is_robot(state.x).numpy())
         dist = actor(state)
         if visited_index and action_index and policy:
             target = compute_target(state, env, visited_index, action_index, policy)
-            print(np.round(dist.probs.detach().numpy().T,2))
-            print(np.round(target.numpy().T,2))
         action = dist.sample()
-        for n in range(env.num_nodes):
-            is_robot = env.is_robot(state.x)
-            if is_robot[n]:
-                print("action:",action.numpy()[n])
+        print("action:", action.numpy()[env.is_robot(state.x).bool()])
         next_state, reward, done, _ = env.step(action.cpu().numpy())
         if reward:
             print("reward:",reward)
             print("***")
-        print(" ")
         state = next_state
-        # print("pose:",state.x[:,env.IS_ROBOT].numpy())
-        print("pose:",env.is_robot(state.x).numpy())
-        print("known:",state.x[:,env.IS_KNOWN_BASE].numpy())
         if done:
             print('Done in {} steps'.format(i+1))
             break
