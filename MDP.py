@@ -7,7 +7,7 @@ import time
 import wandb
 import pickle
 from itertools import product
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, eye, diags
 
 #### CREATE TRANSITION AND REWARD MODELS
 def get_model(env):
@@ -30,7 +30,7 @@ def get_model(env):
     done = False
     print("searching state space exhaustively...")
     e_break = 0
-    while Q: # and e_break < 100:
+    while Q and not done: # CHANGE HERE IF YOU WANT TO EXHAUST ALL STATES
         u = Q.pop(0)
         e_break += 1
 
@@ -51,7 +51,8 @@ def get_model(env):
                 v = state.x
                 tv = tuple(v.flatten().numpy())
 
-                t_dict[action_combo].setdefault(tu, {})[tv] = 1
+                # t_dict[action_combo].setdefault(tu, {})[tv] = 1
+                t_dict[action_combo][tu] = tv
                 if reward:
                     r_dict[action_combo].setdefault(tu, {})[tv] = reward
 
@@ -63,14 +64,15 @@ def get_model(env):
 
     # if stopped early
     if Q:
-        print("stopped early")
+        print("stopped early", len(Q))
     for s in Q:
         ts = tuple(s.flatten().numpy())
         visited_index[ts] = len(visited_index)
 
+    print("")
     print(f"Done searching in {time.time()-start} secs")
     n_states = len(visited_index)
-    print(f"{n_states} states were considered exhaustively")
+    print(f"{n_states} states were considered")
 
     # n_states = 11776
     # transitions = np.zeros((len(action_index), n_states, n_states), dtype=np.uint8)
@@ -79,25 +81,29 @@ def get_model(env):
     transitions = [csr_matrix((n_states, n_states), dtype=np.int8) for _ in range(len(action_index))]
     rewards = [csr_matrix((n_states, n_states), dtype=np.int8) for _ in range(len(action_index))]
 
-    print("transitions shape:", transitions.shape)
-    print("rewards shape:", rewards.shape)
+    print("transitions shape:", len(transitions), transitions[0].shape)
+    print("rewards shape:", len(rewards), rewards[0].shape)
 
-    for a in t_dict:
-        a_idx = action_index[a]
-        for u in t_dict[a]:
-            for v in t_dict[a][u]:
-                transitions[a_idx][visited_index[u],visited_index[v]] = t_dict[a][u][v]
+    index_to_state = {v:k for k,v in visited_index.items()}
+
+    for a, a_idx in action_index.items():
+        tmat = transitions[a_idx]
+        for u in range(n_states):
+            if u not in index_to_state:
+                tmat[u, u] = 1
+            else:
+                tu = index_to_state[u]
+                if tu in t_dict[a]:
+                    v = visited_index[t_dict[a][tu]]
+                    tmat[u,v] = 1
+                else:
+                    tmat[u, u] = 1
 
     for a in r_dict:
         a_idx = action_index[a]
         for u in r_dict[a]:
             for v in r_dict[a][u]:
                 rewards[a_idx][visited_index[u],visited_index[v]] = r_dict[a][u][v]
-
-    if transitions.sum(axis=1) != np.ones(transitions.shape[0]):
-        print("stochastic error?")
-        print(transitions.sum(axis=1))
-        print("at index", torch.argmax(transitions.sum(axis=1)))
 
     return transitions, rewards, visited_index, action_index
 
@@ -113,6 +119,7 @@ def solve(transitions, rewards, discount=0.99):
     mdp.run()
     print(f"Done solving MDP in {time.time()-start} secs")
     policy = mdp.policy
+    print("MDP optimal policy with discounted cumulative reward:", mdp.V[0])
     return policy
 
 def save_optimal_policy(visited_index, action_index, policy, filename="policy.p"):
@@ -129,6 +136,8 @@ def load_optimal_policy(filename="policy.p"):
 def compute_target(state, env, visited_index, index_action, policy):
     s = state.x
     st = tuple(s.flatten().numpy())
+    if st not in visited_index:
+        return torch.ones((env.num_nodes, env.num_actions))*(1/env.num_actions)
     s_idx = visited_index[st]
     action_idx = policy[s_idx]
     action_combo = index_action[action_idx]
